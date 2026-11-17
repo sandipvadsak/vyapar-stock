@@ -429,7 +429,7 @@ VIEWS.staff = async () => {
     <div class="tw"><table><thead><tr><th>NAME</th><th>EMAIL</th><th>ROLE</th><th>STATUS</th><th>ACCESS</th><th></th></tr></thead><tbody>${
     USERS.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${u.role === 'owner' ? 'Owner' : 'Staff'}</td><td>${u.active ? '<span class="good">On</span>' : '<span class="bad">Off</span>'}</td>
       <td>${u.role === 'owner' ? 'Everything' : PERMS.filter(([k]) => u.perms?.[k]).length + ' of ' + PERMS.length + ' rights'}</td><td>${
-      u.role === 'owner' ? '' : `<button class="btn sm" data-user="${u.id}">CHANGE</button>`}</td></tr>`).join('')}</tbody></table></div></div>`;
+      u.role === 'owner' ? '' : `<button class="btn sm ${u.active ? '' : 'pri'}" data-toggle="${u.id}">${u.active ? 'SWITCH OFF' : 'SWITCH ON'}</button> <button class="btn sm buy" data-user="${u.id}">CHANGE RIGHTS</button>`}</td></tr>`).join('')}</tbody></table></div></div>`;
 };
 function userForm(id) {
   const u = USERS.find((x) => x.id === id);
@@ -445,7 +445,7 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
@@ -462,6 +462,7 @@ document.addEventListener('click', async (e) => {
     else if (d.itemEdit) itemForm(ITEMS.find((i) => i.id === Number(d.itemEdit)));
     else if (d.adjust) adjustForm(Number(d.adjust));
     else if (d.rep) { REP.tab = d.rep; route(); }
+    else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
     else if (d.user) userForm(d.user);
   } catch (err) { toast(err.message); }
 });
