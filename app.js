@@ -363,6 +363,7 @@ VIEWS.items = async () => {
       <button class="btn sm ${mode === 'del' ? 'danger' : 'lite'}" id="ibulk" disabled>${mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE'}</button></div>` : ''}
     <div class="rows" id="irows"></div></div><div class="det" id="idet"></div></div>`;
   let hit = [];
+  const canEditItem = can('manage_items');
   const bar = () => {
     if (!mode) return;
     const n = ITEM_SEL.size, shown = hit.filter((i) => ITEM_SEL.has(i.id)).length;
@@ -387,11 +388,12 @@ VIEWS.items = async () => {
     hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
     $('#irows').innerHTML = hit.map((i) => {
       const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
-      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
+      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span>${canEditItem ? `<button type="button" class="redit" data-item-edit="${i.id}" title="Edit this item" aria-label="Edit ${esc(i.name)}">✏️</button>` : ''}</div>`;
     }).join('') || '<div class="empty">No item found</div>';
     bar();
   };
   $('#isearch').oninput = draw; draw();
+  if (canEditItem) $('#irows').ondblclick = (e) => { const row = e.target.closest('[data-item]'); if (!row || e.target.closest('.isel,.redit')) return; const it = ITEMS.find((x) => x.id === Number(row.dataset.item)); if (it) itemForm(it); };
   if (mode) {
     $('#irows').addEventListener('change', (e) => { if (!e.target.classList.contains('isel')) return; const id = Number(e.target.dataset.sel); if (e.target.checked) ITEM_SEL.add(id); else ITEM_SEL.delete(id); bar(); });
     $('#iall').onchange = () => { for (const i of hit) { if ($('#iall').checked) ITEM_SEL.add(i.id); else ITEM_SEL.delete(i.id); } draw(); };
@@ -449,9 +451,10 @@ async function itemDetail() {
     i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
     + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '')
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
-  $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
+  $('#idet').innerHTML = `<div class="panel hero near"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
+    can('manage_items') ? `<button class="btn sm buy" data-item-edit="${i.id}">✏️ EDIT</button>` : ''}${
     can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
-    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
+    can('manage_items') ? `<button class="btn sm lite" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
