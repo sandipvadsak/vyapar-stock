@@ -152,14 +152,16 @@ input:focus,select:focus,textarea:focus{outline:2px solid #cdbcf8;border-color:v
 .fbar .btn{margin-bottom:3px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .tag{display:inline-block;border-radius:10px;padding:2px 9px;font-size:12px;font-weight:700;background:#e6eaf3}
-.tag.acct{background:#13204b;color:#fff;letter-spacing:.4px}
+.tag.acct{background:#13204b;color:#fff;letter-spacing:.4px;padding:3px 11px}
 .achips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:4px 18px 14px}
 .achips b{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.6px;margin-right:4px}
-.achips button{border:1px solid #d7dcea;background:#fff;border-radius:12px;padding:6px 12px;font-weight:800;cursor:pointer;color:var(--ink);text-align:left;line-height:1.25}
+.achips button{--ac:#13204b;border:1px solid #d7dcea;border-left:6px solid var(--ac);background:#fff;border-radius:12px;padding:6px 12px 6px 10px;font-weight:800;cursor:pointer;color:var(--ac);text-align:left;line-height:1.25}
+.achips button i{display:none}
 .achips button small{display:block;font-weight:600;font-size:11.5px;color:var(--mute)}
-.achips button:hover{border-color:var(--acc)}
-.achips button.on{background:var(--acc);border-color:var(--acc);color:#fff}
-.achips button.on small{color:#e9e1ff}
+.achips button:hover{box-shadow:0 2px 8px rgba(20,30,70,.16)}
+.achips button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.achips button.on small{color:rgba(255,255,255,.85)}
+.achips button[data-acct=""]{border-left-width:1px;color:var(--ink)}
 .tag.sale{background:#ebe3fd;color:#5b21b6}.tag.purchase{background:#dde9fd;color:#1d4ed8}
 .tag.sale_return,.tag.purchase_return{background:#fff0cc;color:#8a5a00}
 .tag.payment_in{background:#dcf5e7;color:#0c7446}.tag.payment_out{background:#e2e8f0;color:#334155}
@@ -259,7 +261,7 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=25"></script>
-<script src="app.js?v=25"></script>
+<script src="config.js?v=26"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

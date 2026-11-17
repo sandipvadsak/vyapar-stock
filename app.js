@@ -23,6 +23,10 @@ const PERMS = [
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
 let HAS_BIN = false, HAS_EDIT = false, HAS_ACCT = false, ACCOUNTS = [];
 const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
+// Each account gets its own colour (by its place in the alphabetical list), the same everywhere.
+const ACCT_COLORS = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#475569', '#be185d', '#0f766e', '#e11d48'];
+const acctColor = (a) => { const i = ACCOUNTS.indexOf(a); return i < 0 ? '#13204b' : ACCT_COLORS[i % ACCT_COLORS.length]; };
+const acctTag = (a) => (a ? `<span class="tag acct" style="background:${acctColor(a)}">${esc(a)}</span>` : '');
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
 const canEdit = (type) => HAS_EDIT && type !== 'other' && (owner() || can('edit_entries')) && sees(type);
@@ -138,7 +142,7 @@ function txnTable(rows, { party = true, pay = false, acct = false } = {}) {
   const st = { Paid: 'payment_in', Unpaid: 'sale', Partial: 'sale_return' };
   return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}${acct ? '<th>ACCOUNT</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
     rows.map((t) => { const ps = payStatus(t); return `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td><td>${esc(t.ref_no || '')}</td>${
-      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${acct ? `<td>${t.account ? `<span class="tag acct">${esc(t.account)}</span>` : ''}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
+      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${acct ? `<td>${acctTag(t.account)}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
       pay ? `<td>${ps ? `<span class="tag ${st[ps]}">${ps}</span>` : ''}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
 }
 function csv(name, head, rows) {
@@ -397,7 +401,7 @@ async function entriesView(fixed, title) {
     if (acct) {   // one chip per account for what is on screen; click to filter
       const by = new Map();
       for (const t of base) { if (!t.account) continue; const o = by.get(t.account) || { n: 0, total: 0 }; o.n++; o.total += (t.type === 'sale_return' ? -1 : 1) * (t.total || 0); by.set(t.account, o); }
-      $('#eacct').innerHTML = by.size ? `<div class="achips"><b>By account</b>${[...by].sort().map(([a, o]) => `<button type="button" class="${fa === a ? 'on' : ''}" data-acct="${esc(a)}">${esc(a)}<small>${o.n} ${o.n === 1 ? 'bill' : 'bills'}${amounts ? ' · ' + money(Math.round(o.total)) : ''}</small></button>`).join('')}${fa ? '<button type="button" data-acct="">Show all</button>' : ''}</div>` : '';
+      $('#eacct').innerHTML = by.size ? `<div class="achips"><b>By account</b>${[...by].sort().map(([a, o]) => `<button type="button" class="${fa === a ? 'on' : ''}" style="--ac:${acctColor(a)}" data-acct="${esc(a)}"><i></i>${esc(a)}<small>${o.n} ${o.n === 1 ? 'bill' : 'bills'}${amounts ? ' · ' + money(Math.round(o.total)) : ''}</small></button>`).join('')}${fa ? '<button type="button" data-acct="">Show all</button>' : ''}</div>` : '';
     }
     const sum = (t, f = 'total') => rows.filter((r) => !t || r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
     const tiles = [];
@@ -441,7 +445,7 @@ async function txnView(id) {
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   dialog(`${TYPE[t.type]} ${t.ref_no ? '#' + t.ref_no : ''}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
     <div><span>Total</span><b>${money(t.total)}</b></div><div><span>Paid</span><b>${money(t.paid)}</b></div><div><span>Balance</span><b>${money(t.balance)}</b></div>
-    ${t.account ? `<div><span>Account</span><b><span class="tag acct">${esc(t.account)}</span></b></div>` : ''}<div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
+    ${t.account ? `<div><span>Account</span><b>${acctTag(t.account)}</b></div>` : ''}<div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<div class="tw"><table><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table></div>` : ''}`,
   null, { extra: (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
