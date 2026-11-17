@@ -20,6 +20,8 @@ const PERMS = [
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
+let HAS_BIN = false;
+const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
 const sees = (type) => can(type === 'sale' || type === 'sale_return' ? 'sale_price'
@@ -44,6 +46,7 @@ async function loadMaster() {
     all('v_parties', (q) => q.order('name').order('id')),
     all('v_categories', (q) => q.order('name').order('id')),
   ]);
+  HAS_BIN = ME?.role === 'owner' && !(await sb.from('v_recycle_bin').select('id').limit(1)).error;
   const seen = new Map();
   for (const i of ITEMS) seen.set(i.name, (seen.get(i.name) || 0) + 1);
   LABEL = new Map(); BYLABEL = new Map();
@@ -98,6 +101,7 @@ async function boot() {
   $('#whoName').textContent = ME.name; $('#whoRole').textContent = owner() ? '(Owner)' : '(Staff)';
   const menu = [['home', 'Dashboard', '🏠'], ['parties', 'Parties', '👥'], ['items', 'Items', '📦'], ['sale', 'Sale', '🧾'], ['purchase', 'Purchase', '🛒'], ['credit', 'Credit Note', '↩️'], ['entries', 'All Transactions', '📒']];
   if (can('reports')) menu.push(['reports', 'Reports', '📊']);
+  if (owner() && HAS_BIN) menu.push(['bin', 'Recycle Bin', '🗑️']);
   if (owner()) menu.push(['staff', 'Staff & Access', '⚙️']);
   $('#menu').innerHTML = menu.map(([k, v, ic]) => `<a href="#${k}" data-k="${k}"><i>${ic}</i>${v}</a>`).join('');
   route();
@@ -163,22 +167,41 @@ const numv = (id) => { const v = val(id); return v == null ? null : Number(v); }
 const field = (id, label, value = '', attrs = '') => `<label class="f">${label}<input id="${id}" value="${esc(value ?? '')}" ${attrs}></label>`;
 
 // ---------- home ----------
+const lowItems = () => ITEMS.filter((i) => i.active && !i.is_service && i.min_stock > 0 && i.stock <= i.min_stock).sort((x, y) => x.stock - y.stock);
 VIEWS.home = async () => {
   $('#title').textContent = 'Dashboard';
   const { data: recent, error } = await sb.from('v_transactions').select('*').order('date', { ascending: false }).order('id', { ascending: false }).limit(15);
   if (error) throw new Error(error.message);
   const goods = ITEMS.filter((i) => i.active && !i.is_service);
-  const low = goods.filter((i) => i.min_stock > 0 && i.stock <= i.min_stock).length;
-  const cards = [];
-  if (can('party_balance')) {
-    cards.push(['To receive', `<span class="good">${money(PARTIES.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0))}</span>`]);
-    cards.push(['To pay', `<span class="bad">${money(PARTIES.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0))}</span>`]);
+  const low = lowItems().length;
+  const cards = [];   // [label, value, small line, click attribute]
+  if (can('sale_price')) {
+    const m = await all('v_transactions', (q) => q.in('type', ['sale', 'sale_return']).gte('date', monthStart()).lte('date', today()).order('id'));
+    const sales = m.filter((t) => t.type === 'sale'), cn = m.filter((t) => t.type === 'sale_return');
+    const tot = (list) => list.reduce((s, t) => s + (t.total || 0), 0);
+    cards.push([`Sale this month (${new Date().toLocaleString('en-IN', { month: 'long' })})`, money(tot(sales)),
+      `${sales.length} bills · credit notes ${money(tot(cn))} · net ${money(tot(sales) - tot(cn))}`, 'data-go="sale"']);
   }
-  if (can('purchase_price')) cards.push(['Stock value', money(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0))]);
-  cards.push(['Items', goods.length], ['Low stock items', `<span class="${low ? 'warn' : ''}">${low}</span>`], ['Parties', PARTIES.filter((p) => p.active).length]);
-  $('#view').innerHTML = `<div class="cards">${cards.map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>
+  if (can('party_balance')) {
+    const mine = PARTIES.filter((p) => !isOwn(p));
+    cards.push(['To receive', `<span class="good">${money(mine.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0))}</span>`, '', 'data-go="parties"']);
+    cards.push(['To pay', `<span class="bad">${money(mine.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0))}</span>`, '', 'data-go="parties"']);
+  }
+  if (can('purchase_price')) cards.push(['Stock value', money(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), '', '']);
+  cards.push(['Items', goods.length, '', 'data-go="items"'], ['Low stock items', `<span class="${low ? 'warn' : ''}">${low}</span>`, low ? 'Click to see the list' : '', 'data-low="1"'],
+    ['Parties', PARTIES.filter((p) => p.active).length, '', 'data-go="parties"']);
+  $('#view').innerHTML = `<div class="cards">${cards.map(([k, v, sub, attr]) => `<div class="card ${attr ? 'tap' : ''}" ${attr}><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`).join('')}</div>
     <div class="panel"><div class="hd"><h2>Recent transactions</h2><a class="btn sm buy" href="#entries">See all</a></div>${txnTable(recent)}</div>`;
 };
+function lowDialog() {
+  const list = lowItems();
+  dialog(`Low stock items (${list.length})`, list.length ? `<p class="mute" style="margin-top:0">Stock is at or below the alert level. Click an item to open it.</p>
+    <div class="tw"><table><thead><tr><th>ITEM</th><th>CATEGORY</th><th class="r">STOCK</th><th class="r">ALERT AT</th><th class="r">SHORT BY</th></tr></thead><tbody>${
+    list.map((i) => `<tr class="click" data-goitem="${i.id}"><td>${esc(i.name)}</td><td>${esc(i.category || '')}</td><td class="r ${i.stock <= 0 ? 'bad' : 'warn'}">${qty(i.stock)} ${esc(i.unit || '')}</td><td class="r">${qty(i.min_stock)}</td><td class="r">${qty(i.min_stock - i.stock)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="empty">No item is low on stock</div>', null,
+    { extra: list.length ? '<button class="btn" type="button" id="lowcsv">EXCEL (CSV)</button>' : '' });
+  if ($('#lowcsv')) $('#lowcsv').onclick = () => csv('low_stock', ['Item', 'Category', 'Stock', 'Unit', 'Alert at', 'Short by'], list.map((i) => [i.name, i.category || '', i.stock, i.unit || '', i.min_stock, i.min_stock - i.stock]));
+}
 
 // ---------- parties ----------
 VIEWS.parties = async () => {
@@ -201,7 +224,7 @@ async function partyDetail() {
   const rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false }));
   const pay = can('entries') && can('party_balance');
   $('#pdet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(p.name)}</h2><div class="chips">${
-    [p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
+    [isOwn(p) && 'Own account · not counted in To pay / To receive', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
     pay ? `<button class="btn sm" data-new="payment_in" data-for="${p.id}">+ PAYMENT-IN</button><button class="btn sm" data-new="payment_out" data-for="${p.id}">+ PAYMENT-OUT</button>` : ''}${
     can('manage_parties') ? `<button class="btn sm" data-party-edit="${p.id}">EDIT</button>` : ''}</div>
     <div class="stats">${p.balance == null ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
@@ -503,7 +526,7 @@ VIEWS.reports = async () => {
     rows = data.map((r) => [r.item, r.unit || '', r.qty_in, r.qty_out, ...(can('sale_price') ? [r.sale_amount] : []), ...(can('purchase_price') ? [r.purchase_amount] : [])]);
   } else {
     head = ['Party', 'Phone', "You'll get", "You'll pay"];
-    rows = PARTIES.filter((p) => Math.abs(p.balance || 0) > 0.005).map((p) => [p.name, p.phone || '', Math.max(p.balance, 0), Math.max(-p.balance, 0)]);
+    rows = PARTIES.filter((p) => !isOwn(p) && Math.abs(p.balance || 0) > 0.005).map((p) => [p.name, p.phone || '', Math.max(p.balance, 0), Math.max(-p.balance, 0)]);
     foot = `To receive: <b class="good">${money(rows.reduce((s, r) => s + r[2], 0))}</b> &nbsp; To pay: <b class="bad">${money(rows.reduce((s, r) => s + r[3], 0))}</b>`;
   }
   const cell = (c) => (typeof c === 'number' ? `<td class="r">${qty(c)}</td>` : `<td>${esc(c)}</td>`);
@@ -515,6 +538,23 @@ VIEWS.reports = async () => {
       rows.map((r) => `<tr>${r.map(cell).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="empty">Nothing to show</div>'}</div>`;
   $('#rcsv').onclick = () => csv('report_' + REP.tab, head, rows);
   if ($('#rf')) { const go = () => { REP.from = $('#rf').value || REP.from; REP.to = $('#rt').value || REP.to; route(); }; $('#rf').onchange = go; $('#rt').onchange = go; }
+};
+
+// ---------- recycle bin ----------
+VIEWS.bin = async () => {
+  $('#title').textContent = 'Recycle Bin';
+  const { data, error } = await sb.from('v_recycle_bin').select('*').order('deleted_at', { ascending: false }).limit(1000);
+  if (error) throw new Error(/v_recycle_bin/.test(error.message) ? 'Recycle Bin is not set up in the database yet.' : error.message);
+  const KIND = { opening: 'Opening Stock', add: 'Add Stock', reduce: 'Reduce Stock' };
+  const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${data.length} deleted ${data.length === 1 ? 'entry' : 'entries'}</h2>
+    <span class="mute">Deleted entries stay here until you restore them or delete them forever. They do not count in stock or balances.</span></div>${
+    data.length ? `<div class="tw"><table><thead><tr><th>DELETED ON</th><th>DELETED BY</th><th>TYPE</th><th>ENTRY DATE</th><th>NO.</th><th>PARTY / ITEM</th><th class="r">AMOUNT / QTY</th><th></th></tr></thead><tbody>${
+      data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}</td><td><span class="tag ${r.kind === 'txn' ? r.type : ''}">${r.kind === 'txn' ? TYPE[r.type] : KIND[r.type]}</span></td>
+        <td>${fdate(r.date)}</td><td>${esc(r.ref_no || '')}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.item)}</td>
+        <td class="r">${r.kind === 'txn' ? money(r.total) : qty(r.qty)}</td>
+        <td><button class="btn sm buy" data-restore="${r.kind}:${r.id}">RESTORE</button> <button class="btn sm" data-purge="${r.kind}:${r.id}">DELETE FOREVER</button></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">Recycle Bin is empty</div>'}</div>`;
 };
 
 // ---------- staff ----------
@@ -542,12 +582,12 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
-    if (d.adjDel) { e.stopPropagation(); if (confirm('Delete this stock adjustment?')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast('Deleted'); } }
-    else if (d.txnDel) { if (confirm('Delete this entry? Stock and balance will change back.')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast('Deleted'); } }
+    if (d.adjDel) { e.stopPropagation(); if (confirm(HAS_BIN ? 'Move this stock adjustment to the Recycle Bin?' : 'Delete this stock adjustment? It cannot be brought back.')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
+    else if (d.txnDel) { if (confirm(HAS_BIN ? 'Move this entry to the Recycle Bin? Stock and balance will change back. You can restore it later.' : 'Delete this entry? Stock and balance will change back. It cannot be brought back.')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
     else if (d.new) newEntry(d.new, d.for ? Number(d.for) : null);
     else if (d.more) moreMenu();
     else if (d.txn) await txnView(Number(d.txn));
@@ -560,6 +600,11 @@ document.addEventListener('click', async (e) => {
     else if (d.adjust) adjustForm(Number(d.adjust));
     else if (d.rep) { REP.tab = d.rep; route(); }
     else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
+    else if (d.low) lowDialog();
+    else if (d.go) location.hash = d.go;
+    else if (d.goitem) { SEL.item = Number(d.goitem); $('#dlg').close(); if (location.hash === '#items') await route(); else location.hash = 'items'; }
+    else if (d.restore) { const [k, id] = d.restore.split(':'); await rpc('restore_entry', { p_kind: k, p_id: Number(id) }); await refresh(); toast('Restored'); }
+    else if (d.purge) { const [k, id] = d.purge.split(':'); if (confirm('Delete this forever? It cannot be brought back.')) { await rpc('purge_entry', { p_kind: k, p_id: Number(id) }); await route(); toast('Deleted forever'); } }
     else if (d.user) userForm(d.user);
   } catch (err) { toast(err.message); }
 });
