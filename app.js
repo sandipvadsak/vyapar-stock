@@ -346,6 +346,7 @@ function partyForm(p = {}) {
 // ---------- items ----------
 let ITEM_SHOW = 'active';   // active | inactive | all
 let ITEM_SEL = new Set();   // ticked items (for doing one thing to many items)
+let ITEM_SORT = 'name_asc';   // name_asc | name_desc | stock_asc | stock_desc
 let ITEM_BAR = null;         // redraws the tick counter and the buttons that act on the ticked items
 // what the ticked items can have done to them on this tab: Active -> mark inactive, Inactive -> delete
 const bulkMode = () => (ITEM_SHOW === 'active' && can('manage_items') ? 'off' : ITEM_SHOW === 'inactive' && HAS_ITEMDEL ? 'del' : '');
@@ -361,6 +362,7 @@ VIEWS.items = async () => {
     <div class="seg">${[['active', `Active (${nA})`], ['inactive', `Inactive (${nI})`], ['all', `All (${ITEMS.length})`]].map(([k, v]) => `<button type="button" class="${ITEM_SHOW === k ? 'on' : ''}" data-itemshow="${k}">${v}</button>`).join('')}</div>
     ${mode ? `<div class="selbar"><label class="c"><input type="checkbox" id="iall"> <span id="icount">Select all</span></label>
       <button class="btn sm ${mode === 'del' ? 'danger' : 'lite'}" id="ibulk" disabled>${mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE'}</button></div>` : ''}
+    <div class="lhead"><button type="button" id="sname" title="Sort by name"></button><button type="button" id="sstock" title="Sort by stock"></button></div>
     <div class="rows" id="irows"></div></div><div class="det" id="idet"></div></div>`;
   let hit = [];
   const canEditItem = can('manage_items');
@@ -386,6 +388,11 @@ VIEWS.items = async () => {
   const draw = () => {
     const s = $('#isearch').value.toLowerCase();
     hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
+    const [by, dir] = ITEM_SORT.split('_'), sign = dir === 'desc' ? -1 : 1;
+    hit.sort((a, b) => (by === 'stock' ? (Number(a.stock) - Number(b.stock)) * sign || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) * sign));
+    $('#sname').textContent = 'ITEM' + (by === 'name' ? (dir === 'asc' ? '  A → Z ▲' : '  Z → A ▼') : '');
+    $('#sstock').textContent = 'STOCK' + (by === 'stock' ? (dir === 'asc' ? '  low → high ▲' : '  high → low ▼') : '  ⇅');
+    $('#sname').classList.toggle('on', by === 'name'); $('#sstock').classList.toggle('on', by === 'stock');
     $('#irows').innerHTML = hit.map((i) => {
       const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
       return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
@@ -393,6 +400,8 @@ VIEWS.items = async () => {
     bar();
   };
   $('#isearch').oninput = draw; draw();
+  $('#sname').onclick = () => { ITEM_SORT = ITEM_SORT === 'name_asc' ? 'name_desc' : 'name_asc'; draw(); $('#irows').scrollTop = 0; };
+  $('#sstock').onclick = () => { ITEM_SORT = ITEM_SORT === 'stock_asc' ? 'stock_desc' : 'stock_asc'; draw(); $('#irows').scrollTop = 0; };
   if (canEditItem) $('#irows').ondblclick = (e) => { const row = e.target.closest('[data-item]'); if (!row || e.target.closest('.isel,.redit')) return; const it = ITEMS.find((x) => x.id === Number(row.dataset.item)); if (it) itemForm(it); };
   if (mode) {
     $('#irows').addEventListener('change', (e) => { if (!e.target.classList.contains('isel')) return; const id = Number(e.target.dataset.sel); if (e.target.checked) ITEM_SEL.add(id); else ITEM_SEL.delete(id); bar(); });
