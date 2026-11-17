@@ -171,6 +171,9 @@ function ask(title, message, okText = 'YES', tone = 'pri') {
   });
 }
 
+// keeps the table heading stuck just under the fixed top row inside a dialog
+const sumFit = () => { const b = $('#sumbar'); if (b) $('#dbody').style.setProperty('--sumh', b.offsetHeight + 'px'); };
+
 // ---------- dialog ----------
 let onSave = null;
 function dialog(title, body, save, { saveText = 'SAVE', extra = '' } = {}) {
@@ -450,12 +453,18 @@ async function txnView(id) {
   if (error) throw new Error(error.message);
   OPEN_TXN = { t, lines };
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  dialog(`${TYPE[t.type]} · ${fdate(t.date)}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
-    <div><span>Total</span><b>${money(t.total)}</b></div><div><span>Paid</span><b>${money(t.paid)}</b></div><div><span>Balance</span><b>${money(t.balance)}</b></div>
-    ${t.account ? `<div><span>Account</span><b>${acctTag(t.account)}</b></div>` : ''}<div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
-    ${lines.length ? `<div class="tw"><table><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
-      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table></div>` : ''}`,
+  const totalQty = lines.reduce((n, l) => n + Number(l.qty || 0), 0);
+  const sf = (k, v, cls = '') => `<div class="sf ${cls}"><span>${k}</span><b>${v}</b></div>`;
+  dialog(`${TYPE[t.type]} · ${fdate(t.date)}`, `<div class="sumbar" id="sumbar">
+      ${sf('Date', fdate(t.date))}${sf('Party', esc(t.party || 'Cash'))}${t.account ? sf('Account', acctTag(t.account)) : ''}
+      ${lines.length ? sf('Items', lines.length) + sf('Total quantity', qty(totalQty), 'hi') : ''}
+      ${sf('Total', money(t.total), 'key')}${sf('Paid', money(t.paid))}${isOwn({ name: t.party }) ? '' : sf('Balance', money(t.balance))}
+      ${sf(t.edited_at ? 'Last edited' : 'Entered by', esc(t.edited_at ? `${t.edited_by_name || ''} · ${when(t.edited_at)}` : t.created_by_name || 'Imported'), 'sm')}
+    </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
+    ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
+      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
   null, { extra: (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
+  sumFit();
 }
 function paymentForm(type, partyId, edit = null) {
   const t = edit?.t, pid = t ? t.party_id : partyId;
@@ -467,14 +476,14 @@ function paymentForm(type, partyId, edit = null) {
 }
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
-  const line = () => `<tr><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
+  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
-  dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
+  dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<select id="f_acct"><option value="">No account</option>${[...new Set([...ACCOUNTS, edit?.t.account].filter(Boolean))].map((a) => `<option ${edit?.t.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__new">+ New account…</option></select>
       <input id="f_acct_new" class="hide" placeholder="Type the new account name" style="text-transform:uppercase;margin-top:6px"></label>` : ''}</div>
     <div id="ipick" class="hide"></div>
-    <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
+    <table class="lines stick" style="margin-top:14px"><thead><tr><th>#</th><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
     ${BUNDLES.length ? `<div class="bundle"><div class="btitle">Logo + Black / White (one ADD puts both lines on the bill)</div>${BUNDLES.map((g, n) => `
       <div class="bgrp ${g.word.toLowerCase()}"><span class="btag">${g.word}</span>
@@ -503,17 +512,23 @@ function billForm(type, edit = null) {
   const acctVal = () => { const v = val('f_acct') || ''; if (v !== '__new') return v; const n = val('f_acct_new'); if (!n) throw new Error('Type the new account name'); return n; };
   if ($('#f_acct')) $('#f_acct').onchange = () => { const isNew = $('#f_acct').value === '__new'; $('#f_acct_new').classList.toggle('hide', !isNew); if (isNew) $('#f_acct_new').focus(); };
   const calc = () => {
-    if (!see) return;
-    let total = 0;
+    let total = 0, n = 0, q = 0;
     for (const tr of $('#lbody').children) {
-      const it = BYLABEL.get($('.li', tr).value.trim().toLowerCase());
-      const a = Number($('.lq', tr).value || 0) * Number($('.lp', tr).value || 0);
+      const name = $('.li', tr).value.trim(), it = BYLABEL.get(name.toLowerCase()), lq = Number($('.lq', tr).value || 0);
+      if (name) { n++; q += lq; }
+      if (!see) continue;
+      const a = lq * Number($('.lp', tr).value || 0);
       const amt = a + (it ? a * (it.tax_rate || 0) / 100 : 0);
       $('.la', tr).textContent = amt ? money(amt) : ''; total += amt;
     }
-    total += Number($('#f_round')?.value || 0);
-    $('#ltotal').textContent = money(total);
-    $('#paidWrap').classList.toggle('hide', !$('#f_party').value);
+    $('#s_items').textContent = n; $('#s_qty').textContent = qty(q);
+    $('#s_party').textContent = $('#f_party').selectedOptions[0]?.textContent || 'Cash'; $('#s_date').textContent = fdate($('#f_date').value);
+    if (see) {
+      total += Number($('#f_round')?.value || 0);
+      $('#ltotal').textContent = money(total); $('#s_total').textContent = money(total);
+      $('#paidWrap').classList.toggle('hide', !$('#f_party').value);
+    }
+    sumFit();
   };
   $('#lbody').oninput = (e) => {
     const tr = e.target.closest('tr');
@@ -610,7 +625,7 @@ function billForm(type, edit = null) {
     $('#f_paid').value = edit.t.paid ?? ''; $('#f_round').value = edit.t.round_off || 0; $('#f_note').value = edit.t.description || '';
     if ($('#f_round')) $('#f_round').oninput = calc;
   }
-  $('#f_party').onchange = calc; calc();
+  $('#f_party').onchange = calc; $('#f_date').onchange = calc; calc();
 }
 function newEntry(type, partyId, edit = null) {
   if (type === 'payment_in' || type === 'payment_out') paymentForm(type, partyId, edit); else billForm(type, edit);
