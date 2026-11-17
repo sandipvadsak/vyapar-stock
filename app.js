@@ -140,8 +140,8 @@ const payStatus = (t) => (t.total == null || isOwn({ name: t.party }) ? '' : t.t
 function txnTable(rows, { party = true, pay = false, acct = false } = {}) {
   if (!rows.length) return '<div class="empty">No transactions found</div>';
   const st = { Paid: 'payment_in', Unpaid: 'sale', Partial: 'sale_return' };
-  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}${acct ? '<th>ACCOUNT</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
-    rows.map((t) => { const ps = payStatus(t); return `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td><td>${esc(t.ref_no || '')}</td>${
+  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th>${party ? '<th>PARTY</th>' : ''}${acct ? '<th>ACCOUNT</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
+    rows.map((t) => { const ps = payStatus(t); return `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td>${
       party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${acct ? `<td>${acctTag(t.account)}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
       pay ? `<td>${ps ? `<span class="tag ${st[ps]}">${ps}</span>` : ''}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
 }
@@ -388,14 +388,14 @@ async function entriesView(fixed, title) {
         PARTIES.map((p) => `<option value="${p.id}" ${String(p.id) === FILTER.party ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
       ${amounts ? `<label class="f">Payment status<select id="fs">${['', 'Paid', 'Unpaid', 'Partial'].map((v) => `<option value="${v}" ${FILTER.status === v ? 'selected' : ''}>${v || 'All'}</option>`).join('')}</select></label>` : ''}
       ${acct ? `<label class="f">Account<select id="fa"><option value="">All accounts</option><option value="-" ${FILTER.account === '-' ? 'selected' : ''}>No account</option>${ACCOUNTS.map((a) => `<option ${FILTER.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label>` : ''}
-      <label class="f grow">Search<input id="fq" placeholder="Bill no., party, account, amount or note" value="${esc(FILTER.q)}"></label>
+      <label class="f grow">Search<input id="fq" placeholder="Party, account, amount or note" value="${esc(FILTER.q)}"></label>
       <button class="btn sm lite" id="fclear">CLEAR</button><button class="btn sm" id="fcsv">EXCEL (CSV)</button>
     </div><div id="etiles"></div><div id="eacct"></div><div id="etable"></div></div>`;
   let rows = [];
   const draw = () => {
     const q = FILTER.q.trim().toLowerCase();
     const base = fetched.filter((t) => (!FILTER.status || payStatus(t) === FILTER.status)
-      && (!q || [t.ref_no, t.party || 'cash', t.description, t.total, t.payment_type, t.account].some((v) => String(v ?? '').toLowerCase().includes(q))));
+      && (!q || [t.party || 'cash', t.description, t.total, t.payment_type, t.account].some((v) => String(v ?? '').toLowerCase().includes(q))));
     const fa = acct ? FILTER.account : '';
     rows = base.filter((t) => !fa || (fa === '-' ? !t.account : t.account === fa));
     if (acct) {   // one chip per account for what is on screen; click to filter
@@ -428,8 +428,8 @@ async function entriesView(fixed, title) {
   $('#eacct').onclick = (e) => { const b = e.target.closest('[data-acct]'); if (!b) return; FILTER.account = b.dataset.acct; if ($('#fa')) $('#fa').value = FILTER.account; draw(); };
   $('#fq').oninput = () => { FILTER.q = $('#fq').value; draw(); };
   $('#fclear').onclick = () => { FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', account: '', q: '' }; route(); };
-  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Account', 'Payment type', 'Total', 'Paid', 'Balance', 'Status'],
-    rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.account || '', t.payment_type, t.total, t.paid, t.balance, payStatus(t)]));
+  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'Party', 'Account', 'Payment type', 'Total', 'Paid', 'Balance', 'Status'],
+    rows.map((t) => [fdate(t.date), TYPE[t.type], t.party || 'Cash', t.account || '', t.payment_type, t.total, t.paid, t.balance, payStatus(t)]));
 }
 VIEWS.entries = () => entriesView('', 'All Transactions');
 VIEWS.sale = () => entriesView('sale', 'Sale');
@@ -444,7 +444,7 @@ async function txnView(id) {
   if (error) throw new Error(error.message);
   OPEN_TXN = { t, lines };
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  dialog(`${TYPE[t.type]} ${t.ref_no ? '#' + t.ref_no : ''}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
+  dialog(`${TYPE[t.type]} · ${fdate(t.date)}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
     <div><span>Total</span><b>${money(t.total)}</b></div><div><span>Paid</span><b>${money(t.paid)}</b></div><div><span>Balance</span><b>${money(t.balance)}</b></div>
     ${t.account ? `<div><span>Account</span><b>${acctTag(t.account)}</b></div>` : ''}<div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<div class="tw"><table><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
@@ -453,7 +453,7 @@ async function txnView(id) {
 }
 function paymentForm(type, partyId, edit = null) {
   const t = edit?.t, pid = t ? t.party_id : partyId;
-  dialog(t ? `Edit ${TYPE[type]} #${t.ref_no || ''}` : TYPE[type], `<div class="grid"><label class="f">Party *<select id="f_party" required><option value="">Choose</option>${
+  dialog(t ? `Edit ${TYPE[type]} · ${fdate(t.date)}` : TYPE[type], `<div class="grid"><label class="f">Party *<select id="f_party" required><option value="">Choose</option>${
     PARTIES.filter((p) => p.active || p.id === pid).map((p) => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', t ? t.date : today(), 'type="date"')}${field('f_amt', type === 'payment_in' ? 'Amount received *' : 'Amount paid *', t ? t.total : '', 'type="number" step="any" min="0" required')}
     <label class="f">Mode<select id="f_mode">${[...new Set(['Cash', 'Bank', 'UPI', 'Cheque', t?.payment_type].filter(Boolean))].map((m) => `<option ${t?.payment_type === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>${field('f_note', 'Note', t?.description || '')}</div>`,
@@ -463,7 +463,7 @@ function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
   const line = () => `<tr><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
-  dialog(edit ? `Edit ${TYPE[type]} #${edit.t.ref_no || ''}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
+  dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<select id="f_acct"><option value="">No account</option>${[...new Set([...ACCOUNTS, edit?.t.account].filter(Boolean))].map((a) => `<option ${edit?.t.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__new">+ New account…</option></select>
       <input id="f_acct_new" class="hide" placeholder="Type the new account name" style="text-transform:uppercase;margin-top:6px"></label>` : ''}</div>
@@ -661,9 +661,9 @@ VIEWS.bin = async () => {
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${data.length} deleted ${data.length === 1 ? 'entry' : 'entries'}</h2>
     <span class="mute">Deleted entries stay here until you restore them or delete them forever. They do not count in stock or balances.</span></div>${
-    data.length ? `<div class="tw"><table><thead><tr><th>DELETED ON</th><th>DELETED BY</th><th>TYPE</th><th>ENTRY DATE</th><th>NO.</th><th>PARTY / ITEM</th><th class="r">AMOUNT / QTY</th><th></th></tr></thead><tbody>${
+    data.length ? `<div class="tw"><table><thead><tr><th>DELETED ON</th><th>DELETED BY</th><th>TYPE</th><th>ENTRY DATE</th><th>PARTY / ITEM</th><th class="r">AMOUNT / QTY</th><th></th></tr></thead><tbody>${
       data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}</td><td><span class="tag ${r.kind === 'txn' ? r.type : ''}">${r.kind === 'txn' ? TYPE[r.type] : KIND[r.type]}</span></td>
-        <td>${fdate(r.date)}</td><td>${esc(r.ref_no || '')}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.item)}</td>
+        <td>${fdate(r.date)}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.item)}</td>
         <td class="r">${r.kind === 'txn' ? money(r.total) : qty(r.qty)}</td>
         <td><button class="btn sm buy" data-restore="${r.kind}:${r.id}">RESTORE</button> <button class="btn sm" data-purge="${r.kind}:${r.id}">DELETE FOREVER</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Recycle Bin is empty</div>'}</div>`;
