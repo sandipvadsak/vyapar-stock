@@ -117,13 +117,17 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 .lines td{padding:5px 6px}
 .lines tbody tr{background:none}
 .lines th{position:static}
-.bundle{display:flex;gap:14px;row-gap:20px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding:12px;border-radius:12px;background:#f7f8fc;border:1px solid var(--line)}
-.btitle{flex-basis:100%;font-weight:800;font-size:14px}
-.bgrp{display:flex;gap:10px;align-items:flex-end;flex:1;min-width:300px;padding:18px 12px 12px;border-radius:12px;border:2px solid;position:relative}
-.bgrp select{min-width:0;width:100%}
+.bundle{display:flex;gap:18px;row-gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;padding:16px;border-radius:14px;background:#f7f8fc;border:1px solid var(--line)}
+.btitle{flex-basis:100%;font-weight:800;font-size:15px;margin-bottom:4px}
+.bgrp{display:flex;gap:14px;align-items:flex-end;flex:1 1 360px;min-width:0;padding:28px 18px 18px;border-radius:14px;border:3px solid;position:relative}
+.bgrp label.f{font-weight:800;font-size:14px;gap:6px}
 .bgrp label.f:first-of-type{flex:1;min-width:0}
-.bgrp label.f{font-weight:800}
-.btag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#fff;font-weight:800;font-size:12px;letter-spacing:.6px;padding:2px 12px;border-radius:10px}
+.bgrp select,.bgrp input{font-size:16px!important;font-weight:600!important;padding:12px 12px;height:50px;border-width:2px}
+.bgrp select{min-width:0;width:100%}
+.bgrp input{width:120px!important}
+.btag{position:absolute;top:-16px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#fff;font-weight:800;font-size:15px;letter-spacing:.8px;padding:5px 22px;border-radius:16px}
+.bundle #b_add{flex-basis:100%;padding:13px;font-size:15px}
+.bundle #b_msg{flex-basis:100%;margin-top:-12px}
 .bgrp.cep{background:#f3edff;border-color:var(--acc)}.bgrp.cep label.f{color:var(--acc-d)}.bgrp.cep .btag{background:var(--acc)}
 .bgrp.cep select,.bgrp.cep input{border-color:#b9a2f3}
 .bgrp.dcep{background:#e8f1ff;border-color:var(--blue)}.bgrp.dcep label.f{color:var(--blue-d)}.bgrp.dcep .btag{background:var(--blue)}
@@ -188,7 +192,7 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="config.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
