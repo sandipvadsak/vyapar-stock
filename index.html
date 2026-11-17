@@ -185,16 +185,18 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 .lines td.no::before{content:counter(ln)}
 .lines td.la{font-weight:800}
 .sumbar{position:sticky;top:-16px;z-index:6;margin:-16px -18px 14px;padding:12px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;
-  background:#fff;border-bottom:1px solid var(--line);box-shadow:0 6px 14px -10px rgba(20,30,70,.35)}
-.sf{background:#f6f7fb;border:1px solid #e4e8f2;border-radius:12px;padding:8px 14px;min-width:96px;color:var(--ink);display:flex;flex-direction:column;justify-content:center}
-.sf span{font-size:10.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--mute)}
+  background:#13204b;box-shadow:0 6px 14px -8px rgba(10,16,45,.6)}
+.sf{background:#22306a;border:1px solid #2f3f80;border-radius:12px;padding:8px 14px;min-width:96px;color:#fff;display:flex;flex-direction:column;justify-content:center}
+.sf span{font-size:10.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#b9c3ea}
 .sf b{font-size:16.5px;font-weight:800;line-height:1.25;white-space:nowrap}
-.sf.hi{background:#eafaf1;border-color:#cdeedb}
-.sf.hi b{color:#0b7a43}
-.sf.key{background:#f3edff;border-color:#ddd0fb}
-.sf.key b{color:var(--acc-d);font-size:19px}
+.sf.hi{background:#f5b301;border-color:#f5b301}
+.sf.hi span{color:#5a4700}
+.sf.hi b{color:#2b2200}
+.sf.key{background:#fff;border-color:#fff}
+.sf.key span{color:var(--mute)}
+.sf.key b{color:#13204b;font-size:19px}
 .sf.sm{margin-left:auto;background:none;border:none;padding-right:0}
-.sf.sm b{font-size:13px;font-weight:600;color:var(--slate)}
+.sf.sm b{font-size:13px;font-weight:600;color:#dfe5fb}
 table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;background:#f3f5fb;box-shadow:0 1px 0 var(--line)}
 @media (max-width:600px){.sf{min-width:0;padding:6px 10px}.sf b{font-size:14.5px}.sf.sm{display:none}}
 .bundle{display:flex;gap:14px;row-gap:22px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding:12px;border-radius:12px;background:#f7f8fc;border:1px solid var(--line)}
@@ -294,7 +296,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=41"></script>
-<script src="app.js?v=41"></script>
+<script src="config.js?v=42"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>

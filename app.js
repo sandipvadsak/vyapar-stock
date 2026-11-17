@@ -27,6 +27,9 @@ const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === Stri
 const ACCT_COLORS = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#475569', '#be185d', '#0f766e', '#e11d48'];
 const acctColor = (a) => { const i = ACCOUNTS.indexOf(a); return i < 0 ? '#13204b' : ACCT_COLORS[i % ACCT_COLORS.length]; };
 const acctTag = (a) => (a ? `<span class="tag acct" style="background:${acctColor(a)}">${esc(a)}</span>` : '');
+// A CEP / DCEP logo is billed on its own line but is part of the same piece as its Black / White base,
+// so its quantity is not counted again in "Total quantity".
+const isLogoPart = (name) => /^d?cep-.*-logo$/i.test(String(name || '').trim());
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
 const canEdit = (type) => HAS_EDIT && type !== 'other' && (owner() || can('edit_entries')) && sees(type);
@@ -453,7 +456,7 @@ async function txnView(id) {
   if (error) throw new Error(error.message);
   OPEN_TXN = { t, lines };
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const totalQty = lines.reduce((n, l) => n + Number(l.qty || 0), 0);
+  const totalQty = lines.reduce((n, l) => n + (isLogoPart(l.item) ? 0 : Number(l.qty || 0)), 0);
   const sf = (k, v, cls = '') => `<div class="sf ${cls}"><span>${k}</span><b>${v}</b></div>`;
   dialog(`${TYPE[t.type]} · ${fdate(t.date)}`, `<div class="sumbar" id="sumbar">
       ${sf('Date', fdate(t.date))}${sf('Party', esc(t.party || 'Cash'))}${t.account ? sf('Account', acctTag(t.account)) : ''}
@@ -515,7 +518,7 @@ function billForm(type, edit = null) {
     let total = 0, n = 0, q = 0;
     for (const tr of $('#lbody').children) {
       const name = $('.li', tr).value.trim(), it = BYLABEL.get(name.toLowerCase()), lq = Number($('.lq', tr).value || 0);
-      if (name) { n++; q += lq; }
+      if (name) { n++; if (!isLogoPart(it ? it.name : name)) q += lq; }
       if (!see) continue;
       const a = lq * Number($('.lp', tr).value || 0);
       const amt = a + (it ? a * (it.tax_rate || 0) / 100 : 0);
