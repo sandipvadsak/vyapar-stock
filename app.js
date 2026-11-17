@@ -193,11 +193,14 @@ async function partyDetail() {
   if (!p) { $('#pdet').innerHTML = '<div class="panel"><div class="empty">Add your first party</div></div>'; return; }
   const rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false }));
   const pay = can('entries') && can('party_balance');
-  $('#pdet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(p.name)}</h2>${
+  $('#pdet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(p.name)}</h2><div class="chips">${
+    [p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
     pay ? `<button class="btn sm" data-new="payment_in" data-for="${p.id}">+ PAYMENT-IN</button><button class="btn sm" data-new="payment_out" data-for="${p.id}">+ PAYMENT-OUT</button>` : ''}${
     can('manage_parties') ? `<button class="btn sm" data-party-edit="${p.id}">EDIT</button>` : ''}</div>
-    <div class="facts"><div><span>Phone</span><b>${esc(p.phone || '—')}</b></div><div><span>GSTIN</span><b>${esc(p.gstin || '—')}</b></div>
-    <div><span>${balWord(p.balance) || 'Balance'}</span><b>${balHtml(p.balance)}</b></div><div><span>Address</span><b>${esc(p.address || '—')}</b></div></div></div>
+    <div class="stats">${p.balance == null ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
+    <div class="stat blue"><i>🧾</i><div><span>Transactions</span><b>${rows.length}</b></div></div>${
+    rows[0] ? `<div class="stat purple"><i>📅</i><div><span>Last entry</span><b>${fdate(rows[0].date)}</b></div></div>` : ''}${
+    p.address ? `<div class="stat gold"><i>🏠</i><div><span>Address</span><b class="wrap">${esc(p.address)}</b></div></div>` : ''}</div></div>
     <div class="panel"><div class="hd"><h2>Transactions (${rows.length})</h2></div>${txnTable(rows, { party: false })}</div>`;
 }
 function partyForm(p = {}) {
@@ -243,16 +246,19 @@ async function itemDetail() {
     ...lines.data.map((l) => ({ date: l.date, type: TYPE[l.type], cls: l.type, txn: l.txn_id, qty: (l.type === 'purchase' || l.type === 'sale_return' ? 1 : l.type === 'other' ? 0 : -1) * l.qty, raw: l.qty, price: l.price, note: l.description })),
     ...adj.data.map((a) => ({ date: a.date, type: KIND[a.kind], cls: '', adj: a.id, qty: (a.kind === 'reduce' ? -1 : 1) * a.qty, raw: a.qty, price: a.at_price, note: a.description })),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
   const facts = [];
-  if (can('sale_price')) facts.push(['Sale price', money(i.sale_price)]);
-  if (can('purchase_price')) facts.push(['Purchase price', money(i.purchase_price)]);
-  if (!i.is_service) facts.push(['Stock quantity', `<span class="${i.stock < 0 ? 'bad' : ''}">${qty(i.stock)} ${esc(i.unit || '')}</span>`]);
-  if (can('purchase_price') && !i.is_service) facts.push(['Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0))]);
-  facts.push(['Category', esc(i.category || '—')], ['Item code', esc(i.code || '—')]);
-  $('#idet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(i.name)}</h2>${
+  if (!i.is_service) facts.push(['📦', 'Stock quantity', `${qty(i.stock)} <small>${esc(i.unit || 'Pcs')}</small>`, low ? 'red' : 'green']);
+  if (can('sale_price')) facts.push(['🏷️', 'Sale price', money(i.sale_price), 'purple']);
+  if (can('purchase_price')) facts.push(['🛒', 'Purchase price', money(i.purchase_price), 'blue']);
+  if (can('purchase_price') && !i.is_service) facts.push(['💰', 'Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0)), 'gold']);
+  const chips = [i.category && `📁 ${esc(i.category)}`, i.code && `# ${esc(i.code)}`, i.hsn && `HSN ${esc(i.hsn)}`, i.location && `📍 ${esc(i.location)}`,
+    i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
+    + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '');
+  $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2><div class="chips">${chips}</div></div>${
     can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
     can('manage_items') ? `<button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}</div>
-    <div class="facts">${facts.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div></div>
+    <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
         r.adj && owner() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
