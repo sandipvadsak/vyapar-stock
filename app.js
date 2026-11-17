@@ -174,23 +174,23 @@ VIEWS.home = async () => {
   if (error) throw new Error(error.message);
   const goods = ITEMS.filter((i) => i.active && !i.is_service);
   const low = lowItems().length;
-  const cards = [];   // [label, value, small line, click attribute]
+  const cards = [];   // [label, value, small line, click attribute, icon, colour]
   if (can('sale_price')) {
     const m = await all('v_transactions', (q) => q.in('type', ['sale', 'sale_return']).gte('date', monthStart()).lte('date', today()).order('id'));
     const sales = m.filter((t) => t.type === 'sale'), cn = m.filter((t) => t.type === 'sale_return');
     const tot = (list) => list.reduce((s, t) => s + (t.total || 0), 0);
     cards.push([`Sale this month (${new Date().toLocaleString('en-IN', { month: 'long' })})`, money(tot(sales)),
-      `${sales.length} bills · credit notes ${money(tot(cn))} · net ${money(tot(sales) - tot(cn))}`, 'data-go="sale"']);
+      `${sales.length} bills · credit notes ${money(tot(cn))} · net ${money(tot(sales) - tot(cn))}`, 'data-go="sale"', '📈', 'hero']);
   }
   if (can('party_balance')) {
     const mine = PARTIES.filter((p) => !isOwn(p));
-    cards.push(['To receive', `<span class="good">${money(mine.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0))}</span>`, '', 'data-go="parties"']);
-    cards.push(['To pay', `<span class="bad">${money(mine.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0))}</span>`, '', 'data-go="parties"']);
+    cards.push(['To receive', money(mine.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0)), 'Parties owe you', 'data-go="parties"', '⬇️', 'green']);
+    cards.push(['To pay', money(mine.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0)), 'You owe parties', 'data-go="parties"', '⬆️', 'rose']);
   }
-  if (can('purchase_price')) cards.push(['Stock value', money(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), '', '']);
-  cards.push(['Items', goods.length, '', 'data-go="items"'], ['Low stock items', `<span class="${low ? 'warn' : ''}">${low}</span>`, low ? 'Click to see the list' : '', 'data-low="1"'],
-    ['Parties', PARTIES.filter((p) => p.active).length, '', 'data-go="parties"']);
-  $('#view').innerHTML = `<div class="cards">${cards.map(([k, v, sub, attr]) => `<div class="card ${attr ? 'tap' : ''}" ${attr}><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`).join('')}</div>
+  if (can('purchase_price')) cards.push(['Stock value', money(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), 'At purchase price', '', '💰', 'gold']);
+  cards.push(['Items', goods.length.toLocaleString('en-IN'), 'Active items', 'data-go="items"', '📦', 'blue'],
+    ['Low stock items', low, low ? 'Click to see the list' : 'All items are fine', 'data-low="1"', '⚠️', low ? 'amber' : 'green']);
+  $('#view').innerHTML = `<div class="kpis">${cards.map(([k, v, sub, attr, ic, c]) => `<div class="kpi ${c} ${attr ? 'tap' : ''}" ${attr}><div class="ic">${ic}</div><div class="tx"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${attr ? '<div class="go">›</div>' : ''}</div>`).join('')}</div>
     <div class="panel"><div class="hd"><h2>Recent transactions</h2><a class="btn sm buy" href="#entries">See all</a></div>${txnTable(recent)}</div>`;
 };
 function lowDialog() {

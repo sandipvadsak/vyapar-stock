@@ -46,6 +46,34 @@ h1,h2,h3{margin:0}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
 .card{background:var(--card);border-radius:12px;padding:15px 16px;box-shadow:0 1px 4px rgba(20,30,70,.10);border-left:5px solid var(--acc)}
 .card:nth-child(even){border-left-color:var(--blue)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:20px}
+.kpi{position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:12px;row-gap:2px;background:#fff;border-radius:18px;padding:18px;
+  border:1px solid #e6e9f2;box-shadow:0 1px 2px rgba(20,30,70,.06),0 10px 24px -12px rgba(20,30,70,.22);transition:transform .15s,box-shadow .15s}
+.kpi::after{content:"";position:absolute;right:-34px;top:-34px;width:120px;height:120px;border-radius:50%;background:var(--c1);opacity:.10}
+.kpi .ic{grid-row:1;grid-column:1;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:linear-gradient(135deg,var(--c1),var(--c2));
+  box-shadow:0 8px 16px -6px var(--c1)}
+.kpi .tx{display:contents}
+.kpi .k{grid-row:1;grid-column:2;position:relative;z-index:1;font-size:12px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--mute)}
+.kpi .v{grid-row:2;grid-column:1/-1;position:relative;z-index:1;font-size:26px;font-weight:800;line-height:1.2;margin-top:12px;color:var(--c3);white-space:nowrap}
+.kpi .sub{grid-row:3;grid-column:1/-1;position:relative;z-index:1;font-size:12px;font-weight:600;color:var(--mute);margin-top:2px}
+.kpi .go{grid-row:1;grid-column:3;font-size:24px;font-weight:800;color:var(--c1);opacity:.55;position:relative;z-index:1}
+.kpi.tap{cursor:pointer}
+.kpi.tap:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(20,30,70,.08),0 18px 30px -12px rgba(20,30,70,.32)}
+.kpi.tap:hover .go{opacity:1}
+.kpi.green{--c1:#10b981;--c2:#059669;--c3:#047857}
+.kpi.rose{--c1:#f43f5e;--c2:#e11d48;--c3:#be123c}
+.kpi.gold{--c1:#f5b301;--c2:#d99000;--c3:#8a5a00}
+.kpi.blue{--c1:#3b82f6;--c2:#2563eb;--c3:#1d4ed8}
+.kpi.amber{--c1:#fb923c;--c2:#ea580c;--c3:#c2410c}
+.kpi.hero{grid-column:span 2;--c1:#a78bfa;--c2:#7c3aed;border:none;color:#fff;padding:22px 22px 22px 20px;
+  background:linear-gradient(120deg,#13204b 0%,#3b2a8c 55%,#7c3aed 100%);box-shadow:0 16px 32px -14px rgba(91,33,182,.65)}
+.kpi.hero::after{background:#fff;opacity:.08;width:220px;height:220px;right:-70px;top:-90px}
+.kpi.hero .ic{width:54px;height:54px;font-size:26px;background:rgba(255,255,255,.16);box-shadow:none;border:1px solid rgba(255,255,255,.25)}
+.kpi.hero .k{color:#d9d2ff}
+.kpi.hero .v{color:#fff;font-size:36px}
+.kpi.hero .sub{color:#d9d2ff;font-size:13px}
+.kpi.hero .go{color:#fff}
+@media (max-width:560px){.kpi.hero{grid-column:span 1}.kpi.hero .v{font-size:28px}}
 .card.tap{cursor:pointer}
 .card.tap:hover{box-shadow:0 3px 10px rgba(20,30,70,.18);transform:translateY(-1px)}
 .card .sub{color:var(--mute);font-size:12px;font-weight:600;margin-top:5px}
@@ -195,7 +223,7 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="config.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
