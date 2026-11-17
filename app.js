@@ -481,7 +481,7 @@ function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
   const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
-  dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
+  dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party *<select id="f_party"><option value="">Choose party</option><option value="cash" ${edit && edit.t.party_id == null ? 'selected' : ''}>Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<select id="f_acct"><option value="">No account</option>${[...new Set([...ACCOUNTS, edit?.t.account].filter(Boolean))].map((a) => `<option ${edit?.t.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__new">+ New account…</option></select>
       <input id="f_acct_new" class="hide" placeholder="Type the new account name" style="text-transform:uppercase;margin-top:6px"></label>` : ''}</div>
@@ -508,7 +508,9 @@ function billForm(type, edit = null) {
       lines.push(l);
     }
     if (!lines.length) throw new Error('Add at least one item');
-    const party = val('f_party');
+    const pv = val('f_party');
+    if (!pv) { $('#f_party').focus(); throw new Error('Choose a party first'); }
+    const party = pv === 'cash' ? null : pv;
     if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
     else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
   });
@@ -525,11 +527,11 @@ function billForm(type, edit = null) {
       $('.la', tr).textContent = amt ? money(amt) : ''; total += amt;
     }
     $('#s_items').textContent = n; $('#s_qty').textContent = qty(q);
-    $('#s_party').textContent = $('#f_party').selectedOptions[0]?.textContent || 'Cash'; $('#s_date').textContent = fdate($('#f_date').value);
+    const pv = $('#f_party').value; $('#s_party').textContent = pv ? $('#f_party').selectedOptions[0].textContent : 'Not chosen'; $('#s_party').parentElement.classList.toggle('need', !pv); $('#f_party').classList.toggle('need', !pv); $('#s_date').textContent = fdate($('#f_date').value);
     if (see) {
       total += Number($('#f_round')?.value || 0);
       $('#ltotal').textContent = money(total); $('#s_total').textContent = money(total);
-      $('#paidWrap').classList.toggle('hide', !$('#f_party').value);
+      $('#paidWrap').classList.toggle('hide', !pv || pv === 'cash');
     }
     sumFit();
   };
