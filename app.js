@@ -136,7 +136,7 @@ const refresh = async () => { await loadMaster(); await route(); };
 $('#refreshBtn').onclick = async () => { try { await refresh(); toast('Refreshed'); } catch (err) { toast(err.message); } };
 
 // ---------- shared pieces ----------
-const payStatus = (t) => (t.total == null ? '' : t.type === 'payment_in' || t.type === 'payment_out' ? '' : (t.balance || 0) <= 0.005 ? 'Paid' : (t.paid || 0) <= 0.005 ? 'Unpaid' : 'Partial');
+const payStatus = (t) => (t.total == null || isOwn({ name: t.party }) ? '' : t.type === 'payment_in' || t.type === 'payment_out' ? '' : (t.balance || 0) <= 0.005 ? 'Paid' : (t.paid || 0) <= 0.005 ? 'Unpaid' : 'Partial');
 function txnTable(rows, { party = true, pay = false, acct = false } = {}) {
   if (!rows.length) return '<div class="empty">No transactions found</div>';
   const st = { Paid: 'payment_in', Unpaid: 'sale', Partial: 'sale_return' };
@@ -235,7 +235,7 @@ VIEWS.parties = async () => {
   const draw = () => {
     const s = $('#psearch').value.toLowerCase();
     $('#prows').innerHTML = list.filter((p) => p.name.toLowerCase().includes(s)).map((p) =>
-      `<div class="row ${p.id === SEL.party ? 'on' : ''}" data-party="${p.id}"><span class="n">${esc(p.name)}</span><span>${balHtml(p.balance)}</span></div>`).join('') || '<div class="empty">No party found</div>';
+      `<div class="row ${p.id === SEL.party ? 'on' : ''}" data-party="${p.id}"><span class="n">${esc(p.name)}</span><span>${isOwn(p) ? '<span class="mute">Own</span>' : balHtml(p.balance)}</span></div>`).join('') || '<div class="empty">No party found</div>';
   };
   $('#psearch').oninput = draw; draw();
   await partyDetail();
@@ -246,10 +246,10 @@ async function partyDetail() {
   const rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false }));
   const pay = can('entries') && can('party_balance');
   $('#pdet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(p.name)}</h2><div class="chips">${
-    [isOwn(p) && 'Own account · not counted in To pay / To receive', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
+    [isOwn(p) && 'Own account · no balance or unpaid shown', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
     pay ? `<button class="btn sm" data-new="payment_in" data-for="${p.id}">+ PAYMENT-IN</button><button class="btn sm" data-new="payment_out" data-for="${p.id}">+ PAYMENT-OUT</button>` : ''}${
     can('manage_parties') ? `<button class="btn sm" data-party-edit="${p.id}">EDIT</button>` : ''}</div>
-    <div class="stats">${p.balance == null ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
+    <div class="stats">${p.balance == null || isOwn(p) ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
     <div class="stat blue"><i>🧾</i><div><span>Transactions</span><b>${rows.length}</b></div></div>${
     rows[0] ? `<div class="stat purple"><i>📅</i><div><span>Last entry</span><b>${fdate(rows[0].date)}</b></div></div>` : ''}${
     p.address ? `<div class="stat gold"><i>🏠</i><div><span>Address</span><b class="wrap">${esc(p.address)}</b></div></div>` : ''}</div></div>
@@ -406,9 +406,9 @@ async function entriesView(fixed, title) {
     const sum = (t, f = 'total') => rows.filter((r) => !t || r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
     const tiles = [];
     if (fixed && amounts) {
-      tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], ['💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green'],
-        ['⏳', rows.some((r) => isOwn({ name: r.party }) && (r.balance || 0) > 0.005) ? 'Unpaid balance (without own account)' : 'Unpaid balance',
-          money(rows.filter((r) => r.type === fixed && !isOwn({ name: r.party })).reduce((s, r) => s + (r.balance || 0), 0)), 'gold']);
+      tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], ['💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green']);
+      const others = rows.filter((r) => r.type === fixed && !isOwn({ name: r.party }));
+      if (others.length || !rows.length) tiles.push(['⏳', 'Unpaid balance', money(others.reduce((s, r) => s + (r.balance || 0), 0)), 'gold']);
     } else if (!fixed) {
       if (can('sale_price')) tiles.push(['🧾', 'Sale', money(sum('sale')), 'purple'], ['↩️', 'Credit notes', money(sum('sale_return')), 'gold']);
       if (can('purchase_price')) tiles.push(['🛒', 'Purchase', money(sum('purchase')), 'blue']);
