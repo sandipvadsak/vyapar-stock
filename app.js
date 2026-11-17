@@ -96,7 +96,7 @@ async function boot() {
   $('#login').classList.add('hide'); $('#app').classList.remove('hide');
   document.title = CFG.appName;
   $('#whoName').textContent = ME.name; $('#whoRole').textContent = owner() ? '(Owner)' : '(Staff)';
-  const menu = [['home', 'Dashboard', '🏠'], ['parties', 'Parties', '👥'], ['items', 'Items', '📦'], ['entries', 'Transactions', '🧾']];
+  const menu = [['home', 'Dashboard', '🏠'], ['parties', 'Parties', '👥'], ['items', 'Items', '📦'], ['sale', 'Sale', '🧾'], ['purchase', 'Purchase', '🛒'], ['credit', 'Credit Note', '↩️'], ['entries', 'All Transactions', '📒']];
   if (can('reports')) menu.push(['reports', 'Reports', '📊']);
   if (owner()) menu.push(['staff', 'Staff & Access', '⚙️']);
   $('#menu').innerHTML = menu.map(([k, v, ic]) => `<a href="#${k}" data-k="${k}"><i>${ic}</i>${v}</a>`).join('');
@@ -295,25 +295,40 @@ function adjustForm(id) {
 
 // ---------- transactions ----------
 let FILTER = { type: '', from: '', to: '' };
-VIEWS.entries = async () => {
-  $('#title').textContent = 'Transactions';
+// One list screen, used for "all entries" and for the Sale / Purchase / Credit Note menu tabs.
+async function entriesView(fixed, title) {
+  $('#title').textContent = title;
   if (!FILTER.from) FILTER = { type: '', from: monthStart(), to: today() };
+  const type = fixed || FILTER.type;
   const rows = await all('v_transactions', (q) => {
     q = q.gte('date', FILTER.from).lte('date', FILTER.to).order('date', { ascending: false }).order('id', { ascending: false });
-    return FILTER.type ? q.eq('type', FILTER.type) : q;
+    return type ? q.eq('type', type) : q;
   });
-  const sum = (t) => rows.filter((r) => r.type === t).reduce((s, r) => s + (r.total || 0), 0);
-  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${rows.length} entries</h2><div class="filters">
-    <select id="ft"><option value="">All types</option>${Object.entries(TYPE).map(([k, v]) => `<option value="${k}" ${FILTER.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+  const sum = (t, f = 'total') => rows.filter((r) => r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
+  const tiles = [];
+  if (fixed && sees(fixed)) {
+    tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], [' 💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green'],
+      ['⏳', 'Balance', money(sum(fixed, 'balance')), 'gold']);
+  } else if (!fixed) {
+    if (can('sale_price')) tiles.push(['🧾', 'Sale', money(sum('sale')), 'purple'], ['↩️', 'Credit notes', money(sum('sale_return')), 'gold']);
+    if (can('purchase_price')) tiles.push(['🛒', 'Purchase', money(sum('purchase')), 'blue']);
+  }
+  const addBtn = fixed && can('entries') ? `<button class="btn sm ${fixed === 'purchase' ? 'buy' : fixed === 'sale_return' ? 'gold' : 'pri'}" data-new="${fixed}">+ ADD ${title.toUpperCase()}</button>` : '';
+  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${rows.length} ${fixed ? title.toLowerCase() + (rows.length === 1 ? ' entry' : ' entries') : 'entries'}</h2><div class="filters">
+    ${fixed ? '' : `<select id="ft"><option value="">All types</option>${Object.entries(TYPE).map(([k, v]) => `<option value="${k}" ${FILTER.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`}
     <input type="date" id="ff" value="${FILTER.from}"><span>to</span><input type="date" id="fto" value="${FILTER.to}">
-    <button class="btn sm" id="fcsv">EXCEL (CSV)</button></div></div>
-    ${can('sale_price') || can('purchase_price') ? `<div class="facts">${can('sale_price') ? `<div><span>Sale</span><b>${money(sum('sale'))}</b></div><div><span>Credit notes</span><b>${money(sum('sale_return'))}</b></div>` : ''}${
-      can('purchase_price') ? `<div><span>Purchase</span><b>${money(sum('purchase'))}</b></div>` : ''}</div>` : ''}${txnTable(rows)}</div>`;
-  const go = () => { FILTER = { type: $('#ft').value, from: $('#ff').value || monthStart(), to: $('#fto').value || today() }; route(); };
-  $('#ft').onchange = go; $('#ff').onchange = go; $('#fto').onchange = go;
-  $('#fcsv').onclick = () => csv('transactions', ['Date', 'Type', 'No', 'Party', 'Total', 'Paid', 'Balance'],
+    <button class="btn sm" id="fcsv">EXCEL (CSV)</button>${addBtn}</div></div>
+    ${tiles.length ? `<div class="stats">${tiles.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic.trim()}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div>` : ''}${txnTable(rows)}</div>`;
+  const go = () => { FILTER = { type: fixed ? FILTER.type : $('#ft').value, from: $('#ff').value || monthStart(), to: $('#fto').value || today() }; route(); };
+  if ($('#ft')) $('#ft').onchange = go;
+  $('#ff').onchange = go; $('#fto').onchange = go;
+  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Total', 'Paid', 'Balance'],
     rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.total, t.paid, t.balance]));
-};
+}
+VIEWS.entries = () => entriesView('', 'All Transactions');
+VIEWS.sale = () => entriesView('sale', 'Sale');
+VIEWS.purchase = () => entriesView('purchase', 'Purchase');
+VIEWS.credit = () => entriesView('sale_return', 'Credit Note');
 async function txnView(id) {
   const [{ data: t, error }, lines] = await Promise.all([
     sb.from('v_transactions').select('*').eq('id', id).single(),
