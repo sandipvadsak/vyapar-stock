@@ -73,6 +73,18 @@ h1,h2,h3{margin:0}
 .kpi.hero .v{color:#fff;font-size:36px}
 .kpi.hero .sub{color:#d9d2ff;font-size:13px}
 .kpi.hero .go{color:#fff}
+@media (min-width:1500px){
+  .kpis{display:flex;flex-wrap:nowrap;gap:14px}
+  .kpi{flex:1 1 0;min-width:0;padding:16px 14px}
+  .kpi.hero{flex:1.75 1 0;padding:18px 18px}
+  .kpi .ic{width:42px;height:42px;font-size:20px;border-radius:13px}
+  .kpi .k{font-size:11.5px;letter-spacing:.5px}
+  .kpi .v{font-size:clamp(17px,1.2vw,26px)}
+  .kpi.hero .v{font-size:clamp(26px,1.9vw,36px)}
+  .kpi .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi.hero .sub{white-space:normal}
+  .kpi .go{font-size:20px}
+}
 @media (max-width:560px){.kpi.hero{grid-column:span 1}.kpi.hero .v{font-size:28px}}
 .card.tap{cursor:pointer}
 .card.tap:hover{box-shadow:0 3px 10px rgba(20,30,70,.18);transform:translateY(-1px)}
@@ -223,7 +235,7 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="config.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
