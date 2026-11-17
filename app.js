@@ -17,13 +17,15 @@ const PERMS = [
   ['manage_items', 'Can add and edit items'],
   ['manage_parties', 'Can add and edit parties'],
   ['entries', 'Can make entries (sale, purchase, stock)'],
+  ['edit_entries', 'Can edit saved entries (only those whose amounts they can see)'],
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
-let HAS_BIN = false;
+let HAS_BIN = false, HAS_EDIT = false;
 const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
+const canEdit = (type) => HAS_EDIT && type !== 'other' && (owner() || can('edit_entries')) && sees(type);
 const sees = (type) => can(type === 'sale' || type === 'sale_return' ? 'sale_price'
   : type === 'purchase' || type === 'purchase_return' ? 'purchase_price' : 'party_balance');
 
@@ -47,6 +49,7 @@ async function loadMaster() {
     all('v_categories', (q) => q.order('name').order('id')),
   ]);
   HAS_BIN = ME?.role === 'owner' && !(await sb.from('v_recycle_bin').select('id').limit(1)).error;
+  HAS_EDIT = !(await sb.from('v_transactions').select('edited_at').limit(1)).error;
   const seen = new Map();
   for (const i of ITEMS) seen.set(i.name, (seen.get(i.name) || 0) + 1);
   LABEL = new Map(); BYLABEL = new Map();
@@ -109,7 +112,7 @@ async function boot() {
 window.onhashchange = () => ME && route();
 
 const VIEWS = {};
-let SEL = { party: null, item: null };
+let SEL = { party: null, item: null }, ADJ = new Map();
 async function route() {
   const k = (location.hash.slice(1) || 'home').split('/')[0];
   const view = VIEWS[k] ? k : 'home';
@@ -142,6 +145,18 @@ function csv(name, head, rows) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + body], { type: 'text/csv' }));
   a.download = `${name}_${today()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ---------- confirm popup ----------
+function ask(title, message, okText = 'YES', tone = 'pri') {
+  return new Promise((resolve) => {
+    const d = $('#askdlg');
+    $('#asktitle').textContent = title; $('#askmsg').textContent = message;
+    const okb = $('#askok'); okb.textContent = okText; okb.className = 'btn ' + tone;
+    const done = (v) => { d.onclose = null; okb.onclick = null; $('#askno').onclick = null; if (d.open) d.close(); resolve(v); };
+    okb.onclick = () => done(true); $('#askno').onclick = () => done(false); d.onclose = () => done(false);
+    d.showModal(); $('#askno').focus();
+  });
 }
 
 // ---------- dialog ----------
@@ -277,6 +292,7 @@ async function itemDetail() {
   ]);
   if (lines.error || adj.error) throw new Error((lines.error || adj.error).message);
   const KIND = { opening: 'Opening Stock', add: 'Add Stock', reduce: 'Reduce Stock' };
+  ADJ = new Map(adj.data.map((a) => [a.id, a]));
   const rows = [
     ...lines.data.map((l) => ({ date: l.date, type: TYPE[l.type], cls: l.type, txn: l.txn_id, qty: (l.type === 'purchase' || l.type === 'sale_return' ? 1 : l.type === 'other' ? 0 : -1) * l.qty, raw: l.qty, price: l.price, note: l.description })),
     ...adj.data.map((a) => ({ date: a.date, type: KIND[a.kind], cls: '', adj: a.id, qty: (a.kind === 'reduce' ? -1 : 1) * a.qty, raw: a.qty, price: a.at_price, note: a.description })),
@@ -297,7 +313,7 @@ async function itemDetail() {
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
-        r.adj && owner() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
+        (r.adj && HAS_EDIT && (owner() || can('edit_entries')) ? `<button class="btn sm buy" data-adj-edit="${r.adj}">EDIT</button> ` : '') + (r.adj && owner() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
 }
 function itemForm(i = {}) {
   dialog(i.id ? 'Edit item' : 'Add item', `<div class="grid">${field('f_name', 'Item name *', i.name, 'required')}${field('f_code', 'Item code', i.code)}
@@ -316,13 +332,14 @@ function itemForm(i = {}) {
       location: val('f_loc'), description: i.description ?? null, mrp: i.mrp ?? null, is_service: i.is_service ?? false, active: i.id ? $('#f_active').checked : true } });
   });
 }
-function adjustForm(id) {
-  const i = ITEMS.find((x) => x.id === id);
-  dialog(`Adjust stock — ${i.name}`, `<div class="grid"><label class="f">Type<select id="f_kind"><option value="add">Add stock</option><option value="reduce">Reduce stock</option></select></label>
-    ${field('f_qty', `Quantity (${esc(i.unit || 'units')}) *`, '', 'type="number" step="any" min="0" required')}${field('f_date', 'Date', today(), 'type="date"')}
-    ${can('purchase_price') ? field('f_at', 'At price', i.purchase_price ?? '', 'type="number" step="any" min="0"') : ''}${field('f_note', 'Note', '')}</div>
+function adjustForm(id, a = null) {
+  const i = ITEMS.find((x) => x.id === id), opening = a?.kind === 'opening';
+  dialog(`${a ? 'Edit' : 'Adjust'} stock — ${i.name}`, `<div class="grid">${opening ? '<label class="f">Type<input value="Opening stock" disabled></label>'
+    : `<label class="f">Type<select id="f_kind"><option value="add" ${a?.kind === 'add' ? 'selected' : ''}>Add stock</option><option value="reduce" ${a?.kind === 'reduce' ? 'selected' : ''}>Reduce stock</option></select></label>`}
+    ${field('f_qty', `Quantity (${esc(i.unit || 'units')}) *`, a ? a.qty : '', 'type="number" step="any" min="0" required')}${field('f_date', 'Date', a ? a.date : today(), 'type="date"')}
+    ${can('purchase_price') ? field('f_at', 'At price', (a ? a.at_price : i.purchase_price) ?? '', 'type="number" step="any" min="0"') : ''}${field('f_note', 'Note', a?.description || '')}</div>
     <p class="mute">Current stock: ${qty(i.stock)} ${esc(i.unit || '')}</p>`,
-  () => rpc('save_adjustment', { p: { item_id: id, kind: val('f_kind'), qty: numv('f_qty'), date: val('f_date'), at_price: numv('f_at'), description: val('f_note') } }));
+  () => rpc(a ? 'update_adjustment' : 'save_adjustment', { p: { id: a?.id, item_id: id, kind: opening ? 'opening' : val('f_kind'), qty: numv('f_qty'), date: val('f_date'), at_price: numv('f_at'), description: val('f_note') } }));
 }
 
 // ---------- transactions ----------
@@ -400,33 +417,37 @@ VIEWS.entries = () => entriesView('', 'All Transactions');
 VIEWS.sale = () => entriesView('sale', 'Sale');
 VIEWS.purchase = () => entriesView('purchase', 'Purchase');
 VIEWS.credit = () => entriesView('sale_return', 'Credit Note');
+let OPEN_TXN = null;
 async function txnView(id) {
   const [{ data: t, error }, lines] = await Promise.all([
     sb.from('v_transactions').select('*').eq('id', id).single(),
     all('v_line_items', (q) => q.eq('txn_id', id).order('id')),
   ]);
   if (error) throw new Error(error.message);
+  OPEN_TXN = { t, lines };
+  const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   dialog(`${TYPE[t.type]} ${t.ref_no ? '#' + t.ref_no : ''}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
     <div><span>Total</span><b>${money(t.total)}</b></div><div><span>Paid</span><b>${money(t.paid)}</b></div><div><span>Balance</span><b>${money(t.balance)}</b></div>
-    <div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div></div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
+    <div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<div class="tw"><table><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table></div>` : ''}`,
-  null, { extra: owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '' });
+  null, { extra: (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
 }
-function paymentForm(type, partyId) {
-  dialog(TYPE[type], `<div class="grid"><label class="f">Party *<select id="f_party" required><option value="">Choose</option>${
-    PARTIES.filter((p) => p.active).map((p) => `<option value="${p.id}" ${p.id === partyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
-    ${field('f_date', 'Date', today(), 'type="date"')}${field('f_amt', type === 'payment_in' ? 'Amount received *' : 'Amount paid *', '', 'type="number" step="any" min="0" required')}
-    <label class="f">Mode<select id="f_mode"><option>Cash</option><option>Bank</option><option>UPI</option><option>Cheque</option></select></label>${field('f_note', 'Note', '')}</div>`,
-  () => rpc('save_transaction', { p: { type, party_id: Number(val('f_party')), date: val('f_date'), amount: numv('f_amt'), payment_type: val('f_mode'), description: val('f_note') } }));
+function paymentForm(type, partyId, edit = null) {
+  const t = edit?.t, pid = t ? t.party_id : partyId;
+  dialog(t ? `Edit ${TYPE[type]} #${t.ref_no || ''}` : TYPE[type], `<div class="grid"><label class="f">Party *<select id="f_party" required><option value="">Choose</option>${
+    PARTIES.filter((p) => p.active || p.id === pid).map((p) => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+    ${field('f_date', 'Date', t ? t.date : today(), 'type="date"')}${field('f_amt', type === 'payment_in' ? 'Amount received *' : 'Amount paid *', t ? t.total : '', 'type="number" step="any" min="0" required')}
+    <label class="f">Mode<select id="f_mode">${[...new Set(['Cash', 'Bank', 'UPI', 'Cheque', t?.payment_type].filter(Boolean))].map((m) => `<option ${t?.payment_type === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>${field('f_note', 'Note', t?.description || '')}</div>`,
+  () => rpc(t ? 'update_transaction' : 'save_transaction', { p: { id: t?.id, type, party_id: Number(val('f_party')), date: val('f_date'), amount: numv('f_amt'), payment_type: val('f_mode'), description: val('f_note') } }));
 }
-function billForm(type) {
+function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
   const line = () => `<tr><td><input class="li" list="itemlist" placeholder="Type item name"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
-  dialog(type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
-    PARTIES.filter((p) => p.active).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
-    ${field('f_date', 'Date', today(), 'type="date"')}${field('f_ref', 'Bill no. (blank = next number)', '')}</div>
+  dialog(edit ? `Edit ${TYPE[type]} #${edit.t.ref_no || ''}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
+    PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+    ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}</div>
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
@@ -436,7 +457,7 @@ function billForm(type) {
       <div class="bgrp dcep"><span class="btag">DCEP</span><label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
         <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label></div>
       <button class="btn sm gold" type="button" id="b_add">+ ADD BOTH</button><span class="mute" id="b_msg"></span></div>` : ''}
-    <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span><label class="f" id="paidWrap">Paid now<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
+    <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span>${edit ? '<label class="f">Round off<input id="f_round" type="number" step="any" style="width:110px"></label>' : ''}<label class="f" id="paidWrap">${edit ? 'Paid' : 'Paid now'}<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>
     <label class="f" style="margin-top:10px">Note<input id="f_note"></label>`,
   async () => {
@@ -451,7 +472,8 @@ function billForm(type) {
     }
     if (!lines.length) throw new Error('Add at least one item');
     const party = val('f_party');
-    await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note') } });
+    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note') } });
+    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note') } });
   });
   const calc = () => {
     if (!see) return;
@@ -462,6 +484,7 @@ function billForm(type) {
       const amt = a + (it ? a * (it.tax_rate || 0) / 100 : 0);
       $('.la', tr).textContent = amt ? money(amt) : ''; total += amt;
     }
+    total += Number($('#f_round')?.value || 0);
     $('#ltotal').textContent = money(total);
     $('#paidWrap').classList.toggle('hide', !$('#f_party').value);
   };
@@ -500,10 +523,20 @@ function billForm(type) {
       q2Touched = false; i2Touched = false; calc();
     };
   }
+  if (edit) {
+    $('#lbody').innerHTML = edit.lines.map(() => line()).join('') + line();
+    edit.lines.forEach((l, n) => {
+      const tr = $('#lbody').children[n];
+      $('.li', tr).value = LABEL.get(l.item_id) || l.item; $('.lq', tr).value = l.qty;
+      if (see) $('.lp', tr).value = l.price ?? '';
+    });
+    $('#f_paid').value = edit.t.paid ?? ''; $('#f_round').value = edit.t.round_off || 0; $('#f_note').value = edit.t.description || '';
+    if ($('#f_round')) $('#f_round').oninput = calc;
+  }
   $('#f_party').onchange = calc; calc();
 }
-function newEntry(type, partyId) {
-  if (type === 'payment_in' || type === 'payment_out') paymentForm(type, partyId); else billForm(type);
+function newEntry(type, partyId, edit = null) {
+  if (type === 'payment_in' || type === 'payment_out') paymentForm(type, partyId, edit); else billForm(type, edit);
 }
 function moreMenu() {
   const opts = [['sale_return', 'Credit Note (Sale Return)'], ['purchase_return', 'Debit Note (Purchase Return)']];
@@ -588,12 +621,14 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
-    if (d.adjDel) { e.stopPropagation(); if (confirm(HAS_BIN ? 'Move this stock adjustment to the Recycle Bin?' : 'Delete this stock adjustment? It cannot be brought back.')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
-    else if (d.txnDel) { if (confirm(HAS_BIN ? 'Move this entry to the Recycle Bin? Stock and balance will change back. You can restore it later.' : 'Delete this entry? Stock and balance will change back. It cannot be brought back.')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
+    if (d.adjEdit) { e.stopPropagation(); adjustForm(SEL.item, ADJ.get(Number(d.adjEdit))); }
+    else if (d.txnEdit) { const o = OPEN_TXN; if (o && o.t.id === Number(d.txnEdit)) newEntry(o.t.type, o.t.party_id, o); }
+    else if (d.adjDel) { e.stopPropagation(); if (await ask('Delete stock adjustment?', HAS_BIN ? 'It will move to the Recycle Bin. Stock will change back. You can restore it later.' : 'Stock will change back. It cannot be brought back.', 'YES, DELETE', 'danger')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
+    else if (d.txnDel) { if (await ask('Delete this entry?', HAS_BIN ? 'It will move to the Recycle Bin. Stock and balance will change back. You can restore it later.' : 'Stock and balance will change back. It cannot be brought back.', 'YES, DELETE', 'danger')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
     else if (d.new) newEntry(d.new, d.for ? Number(d.for) : null);
     else if (d.more) moreMenu();
     else if (d.txn) await txnView(Number(d.txn));
@@ -605,22 +640,22 @@ document.addEventListener('click', async (e) => {
     else if (d.itemEdit) itemForm(ITEMS.find((i) => i.id === Number(d.itemEdit)));
     else if (d.adjust) adjustForm(Number(d.adjust));
     else if (d.rep) { REP.tab = d.rep; route(); }
-    else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
+    else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); if (!(await ask(u.active ? 'Switch this account off?' : 'Switch this account on?', u.active ? `${u.name} will not be able to sign in.` : `${u.name} will be able to sign in with the rights you have ticked.`, u.active ? 'YES, SWITCH OFF' : 'YES, SWITCH ON'))) return; await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
     else if (d.itemshow) { ITEM_SHOW = d.itemshow; await route(); }
     else if (d.itemToggle) {
       const i = ITEMS.find((x) => x.id === Number(d.itemToggle));
-      if (confirm(i.active ? `Mark "${i.name}" inactive? It will be hidden from bills and lists. Its old entries and stock stay.` : `Mark "${i.name}" active again?`)) {
+      if (await ask(i.active ? 'Mark this item inactive?' : 'Mark this item active?', i.active ? `"${i.name}" will be hidden from bills and from the Active list. Its old entries and stock stay as they are.` : `"${i.name}" will show in bills and in the Active list again.`, i.active ? 'YES, MARK INACTIVE' : 'YES, MARK ACTIVE')) {
         await rpc('save_item', { p: { id: i.id, name: i.name, code: i.code, category_id: i.category_id, unit: i.unit, hsn: i.hsn, tax_rate: i.tax_rate, min_stock: i.min_stock,
           location: i.location, description: i.description, sale_price: i.sale_price, purchase_price: i.purchase_price, mrp: i.mrp, active: !i.active } });
-        SEL.item = i.id; if (ITEM_SHOW !== 'all') ITEM_SHOW = i.active ? 'inactive' : 'active';
+        if (ITEM_SHOW === 'all') SEL.item = i.id;
         await refresh(); toast(i.active ? 'Marked inactive' : 'Marked active');
       }
     }
     else if (d.low) lowDialog();
     else if (d.go) location.hash = d.go;
     else if (d.goitem) { SEL.item = Number(d.goitem); $('#dlg').close(); if (location.hash === '#items') await route(); else location.hash = 'items'; }
-    else if (d.restore) { const [k, id] = d.restore.split(':'); await rpc('restore_entry', { p_kind: k, p_id: Number(id) }); await refresh(); toast('Restored'); }
-    else if (d.purge) { const [k, id] = d.purge.split(':'); if (confirm('Delete this forever? It cannot be brought back.')) { await rpc('purge_entry', { p_kind: k, p_id: Number(id) }); await route(); toast('Deleted forever'); } }
+    else if (d.restore) { const [k, id] = d.restore.split(':'); if (!(await ask('Restore this entry?', 'It will come back into the lists, and stock and balance will count it again.', 'YES, RESTORE', 'buy'))) return; await rpc('restore_entry', { p_kind: k, p_id: Number(id) }); await refresh(); toast('Restored'); }
+    else if (d.purge) { const [k, id] = d.purge.split(':'); if (await ask('Delete forever?', 'This entry will be removed completely. It cannot be brought back.', 'YES, DELETE FOREVER', 'danger')) { await rpc('purge_entry', { p_kind: k, p_id: Number(id) }); await route(); toast('Deleted forever'); } }
     else if (d.user) userForm(d.user);
   } catch (err) { toast(err.message); }
 });
