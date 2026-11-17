@@ -175,7 +175,7 @@ function waPhone(p) {
 }
 const waParty = (t) => PARTIES.find((p) => p.id === t.party_id);
 const waCan = (t) => { const p = waParty(t); return !!p && !isOwn(p) && !!waPhone(p) && t.type !== 'other' && t.total != null && can('party_balance'); };
-function waText(t, p, edited) {
+function waText(t, p, edited, lines = []) {
   const firm = CFG.firmName || CFG.appName, rs = (n) => '₹ ' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   const L = [`Greetings from ${firm},`, edited ? 'Please find the updated details of your transaction.' : 'We are pleased to have you as a valuable customer. Please find the details of your transaction.', ''];
   L.push(`*${TYPE[t.type]}*`, `Date: ${fdate(t.date)}`);
@@ -184,6 +184,20 @@ function waText(t, p, edited) {
   else {
     const out = t.type === 'purchase' || t.type === 'sale_return';   // money goes from us to the party
     L.push(`${t.type === 'sale' ? 'Invoice Amount' : t.type === 'purchase' ? 'Bill Amount' : 'Amount'}: ${rs(t.total)}`, `${out ? 'Paid' : 'Received'}: ${rs(t.paid)}`, `Balance: ${rs(t.balance)}`);
+  }
+  if (lines.length) {
+    // the goods on this bill, so the party can check them (kept short enough for a WhatsApp link)
+    const num = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+    L.push('', `*Items (${lines.length})*`);
+    let used = 0, shown = 0, q = 0;
+    for (const l of lines) if (!isLogoPart(l.item)) q += Number(l.qty || 0);
+    for (const l of lines) {
+      const row = `${shown + 1}. ${l.item} - ${num(l.qty)}${l.unit ? ' ' + l.unit : ''} x ${rs(l.price)} = ${rs(l.total)}`;
+      if (used + row.length > 2600) break;
+      L.push(row); used += row.length + 1; shown++;
+    }
+    if (shown < lines.length) L.push(`...and ${lines.length - shown} more items`);
+    L.push(`Total quantity: ${num(q)}`, '');
   }
   const b = Number(p.balance || 0);
   L.push(Math.abs(b) < 0.005 ? 'Total Balance: ₹ 0' : b > 0 ? `Total Balance: ${rs(b)}` : `Total Balance: ${rs(-b)} (advance with us)`);
@@ -194,12 +208,13 @@ async function waOffer(id, edited) {
   const { data: t, error } = await sb.from('v_transactions').select('*').eq('id', id).single();
   if (error || !t || !waCan(t)) return;
   const p = waParty(t), phone = waPhone(p);
+  const lines = t.type === 'payment_in' || t.type === 'payment_out' ? [] : await all('v_line_items', (q) => q.eq('txn_id', id).order('id'));
   const link = (txt) => `https://wa.me/${phone}?text=${encodeURIComponent(txt)}`;
   dialog('Send on WhatsApp?', `<p style="margin-top:0">To <b>${esc(p.name)}</b> · +${phone.slice(0, 2)} ${phone.slice(2)}</p>
     <label class="f">Message (you can change it before sending)<textarea id="wa_txt" rows="13" style="font-size:14px;line-height:1.45"></textarea></label>
     <p class="mute" style="margin-bottom:0">WhatsApp opens with this message ready. Press Send there.</p>`,
   null, { extra: '<button class="btn lite" type="button" id="wa_no">NOT NOW</button><a class="btn wa" id="wa_go" target="_blank" rel="noopener">SEND ON WHATSAPP</a>' });
-  $('#wa_txt').value = waText(t, p, edited);
+  $('#wa_txt').value = waText(t, p, edited, lines);
   const set = () => { $('#wa_go').href = link($('#wa_txt').value); };
   set(); $('#wa_txt').oninput = set;
   $('#wa_no').onclick = () => $('#dlg').close();
