@@ -375,9 +375,9 @@ VIEWS.items = async () => {
     // so nobody deletes just the one open item by mistake.
     const hd = $('#idet .hd');
     if (hd) {
-      hd.querySelectorAll('.kebab').forEach((b) => b.classList.toggle('hide', n > 0));
+      hd.querySelectorAll('[data-item-del],[data-item-toggle],[data-adjust],[data-item-edit]').forEach((b) => b.classList.toggle('hide', n > 0));
       let big = hd.querySelector('#ibulk2');
-      if (n > 0 && !big) { hd.querySelector('.ttl').insertAdjacentHTML('beforeend', '<button class="btn danger" type="button" id="ibulk2" style="margin-top:10px"></button>'); big = hd.querySelector('#ibulk2'); big.onclick = () => $('#ibulk').click(); }
+      if (n > 0 && !big) { hd.insertAdjacentHTML('beforeend', '<button class="btn danger" type="button" id="ibulk2"></button>'); big = hd.querySelector('#ibulk2'); big.onclick = () => $('#ibulk').click(); }
       if (big) { big.classList.toggle('hide', !n); big.textContent = label; }
     }
   };
@@ -445,20 +445,13 @@ async function itemDetail() {
   if (can('sale_price')) facts.push(['🏷️', 'Sale price', money(i.sale_price), 'purple']);
   if (can('purchase_price')) facts.push(['🛒', 'Purchase price', money(i.purchase_price), 'blue']);
   if (can('purchase_price') && !i.is_service) facts.push(['💰', 'Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0)), 'gold']);
-  const chips = [i.category && `📁 ${esc(i.category)}`, i.code && `# ${esc(i.code)}`, i.hsn && `HSN ${esc(i.hsn)}`, i.location && `📍 ${esc(i.location)}`,
+  const chips = [i.category && `📁 ${esc(i.category)}`, i.code && `# ${esc(i.code)}`, i.location && `📍 ${esc(i.location)}`,
     i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
     + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '')
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
-  // the item's actions live in a three-dot menu beside its name
-  const acts = [
-    can('entries') && !i.is_service && `<button type="button" data-adjust="${i.id}">📦 Adjust stock</button>`,
-    can('manage_items') && `<button type="button" data-item-edit="${i.id}">✏️ Edit item</button>`,
-    can('manage_items') && `<button type="button" data-item-toggle="${i.id}">${i.active ? '🚫 Mark inactive' : '✅ Mark active'}</button>`,
-    HAS_ITEMDEL && !i.active && `<button type="button" class="dng" data-item-del="${i.id}">🗑️ Delete item</button>`,
-  ].filter(Boolean);
-  $('#idet').innerHTML = `<div class="panel hero mid"><div class="hd"><div class="ttl"><div class="nameline"><h2>${esc(i.name)}</h2>${
-    acts.length ? `<div class="kebab"><button type="button" class="kb" data-kebab="1" title="Options" aria-label="Options">⋮</button><div class="kmenu hide">${acts.join('')}</div></div>` : ''}</div>
-    <div class="chips">${chips}</div></div></div>
+  $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
+    can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
+    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
@@ -469,7 +462,7 @@ async function itemDetail() {
 function itemForm(i = {}) {
   dialog(i.id ? 'Edit item' : 'Add item', `<div class="grid">${field('f_name', 'Item name *', i.name, 'required')}${field('f_code', 'Item code', i.code)}
     <label class="f">Category<input id="f_cat" list="catlist" value="${esc(i.category || '')}"><datalist id="catlist">${CATS.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist></label>
-    ${field('f_unit', 'Unit (Pcs, Kg, Box…)', i.unit)}${field('f_hsn', 'HSN code', i.hsn)}${field('f_tax', 'Tax %', i.tax_rate ?? 0, 'type="number" step="any" min="0"')}
+    ${field('f_unit', 'Unit (Pcs, Kg, Box…)', i.unit)}${field('f_tax', 'Tax %', i.tax_rate ?? 0, 'type="number" step="any" min="0"')}
     ${can('sale_price') ? field('f_sale', 'Sale price', i.sale_price, 'type="number" step="any" min="0"') : ''}
     ${can('purchase_price') ? field('f_buy', 'Purchase price', i.purchase_price, 'type="number" step="any" min="0"') : ''}
     ${i.id ? '' : field('f_open', 'Opening stock', '', 'type="number" step="any"')}
@@ -478,7 +471,7 @@ function itemForm(i = {}) {
   async () => {
     const cat = val('f_cat');
     const category_id = cat ? await rpc('save_category', { p_name: cat }) : null;
-    SEL.item = await rpc('save_item', { p: { id: i.id ?? null, name: val('f_name'), code: val('f_code'), category_id, unit: val('f_unit'), hsn: val('f_hsn'),
+    SEL.item = await rpc('save_item', { p: { id: i.id ?? null, name: val('f_name'), code: val('f_code'), category_id, unit: val('f_unit'), hsn: i.hsn ?? null,
       tax_rate: numv('f_tax') ?? 0, sale_price: numv('f_sale'), purchase_price: numv('f_buy'), opening_stock: numv('f_open'), min_stock: numv('f_min') ?? 0,
       location: val('f_loc'), description: i.description ?? null, mrp: i.mrp ?? null, is_service: i.is_service ?? false, active: i.id ? $('#f_active').checked : true } });
   });
@@ -851,9 +844,6 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const kb = e.target.closest('[data-kebab]');
-  document.querySelectorAll('.kmenu').forEach((m) => { if (!kb || m !== kb.nextElementSibling) m.classList.add('hide'); });
-  if (kb) { kb.nextElementSibling.classList.toggle('hide'); return; }
   const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit],[data-item-del],[data-wa]');
   if (!el || !ME) return;
   const d = el.dataset;
