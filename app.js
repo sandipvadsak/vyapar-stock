@@ -464,7 +464,8 @@ function billForm(type, edit = null) {
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} #${edit.t.ref_no || ''}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
-    ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<input id="f_acct" list="acctlist" placeholder="Choose or type" value="${esc(edit?.t.account || '')}" style="text-transform:uppercase"><datalist id="acctlist">${ACCOUNTS.map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>` : ''}</div>
+    ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<select id="f_acct"><option value="">No account</option>${[...new Set([...ACCOUNTS, edit?.t.account].filter(Boolean))].map((a) => `<option ${edit?.t.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__new">+ New account…</option></select>
+      <input id="f_acct_new" class="hide" placeholder="Type the new account name" style="text-transform:uppercase;margin-top:6px"></label>` : ''}</div>
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
@@ -489,9 +490,11 @@ function billForm(type, edit = null) {
     }
     if (!lines.length) throw new Error('Add at least one item');
     const party = val('f_party');
-    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: val('f_acct') || '' } : {}) } });
-    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: val('f_acct') || '' } : {}) } });
+    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
+    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
   });
+  const acctVal = () => { const v = val('f_acct') || ''; if (v !== '__new') return v; const n = val('f_acct_new'); if (!n) throw new Error('Type the new account name'); return n; };
+  if ($('#f_acct')) $('#f_acct').onchange = () => { const isNew = $('#f_acct').value === '__new'; $('#f_acct_new').classList.toggle('hide', !isNew); if (isNew) $('#f_acct_new').focus(); };
   const calc = () => {
     if (!see) return;
     let total = 0;
