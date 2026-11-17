@@ -579,12 +579,7 @@ function billForm(type, edit = null) {
     if (see) $('.lp', tr).value = (sale ? it.sale_price : it.purchase_price) ?? '';
   };
   if ($('#b_add')) {
-    let q2Touched = false, i2Touched = false;
     const item = (id) => ITEMS.find((i) => i.id === Number($(id).value));
-    $('#b_i1').onchange = () => { const t = BUNDLES.twin.get(Number($('#b_i1').value)); if (!i2Touched && t) $('#b_i2').value = t; };
-    $('#b_i2').onchange = () => { i2Touched = true; };
-    $('#b_q1').oninput = () => { if (!q2Touched) $('#b_q2').value = $('#b_q1').value; };
-    $('#b_q2').oninput = () => { q2Touched = true; };
     $('#b_add').onclick = () => {
       const c = item('#b_i1'), d = item('#b_i2'), q1 = Number($('#b_q1').value), q2 = Number($('#b_q2').value);
       if (!c || !d) { $('#b_msg').textContent = 'Choose the CEP item and the DCEP item'; return; }
@@ -593,7 +588,7 @@ function billForm(type, edit = null) {
       $('#lbody').insertAdjacentHTML('beforeend', line());
       $('#b_msg').textContent = `Added: ${c.name} × ${q1} and ${d.name} × ${q2}`;
       for (const id of ['#b_i1', '#b_i2', '#b_q1', '#b_q2']) $(id).value = '';
-      q2Touched = false; i2Touched = false; calc();
+      calc();
     };
   }
   if (edit) {
