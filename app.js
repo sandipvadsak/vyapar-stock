@@ -394,7 +394,7 @@ VIEWS.items = async () => {
     $('#sstock').textContent = 'STOCK' + (by === 'stock' ? (dir === 'asc' ? '  low → high ▲' : '  high → low ▼') : '  ⇅');
     $('#sname').classList.toggle('on', by === 'name'); $('#sstock').classList.toggle('on', by === 'stock');
     $('#irows').innerHTML = hit.map((i) => {
-      const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
+      const low = !i.is_service && (i.stock < 0 || (i.active && i.min_stock > 0 && i.stock <= i.min_stock));
       return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
     }).join('') || '<div class="empty">No item found</div>';
     bar();
@@ -450,14 +450,14 @@ async function itemDetail() {
     ...lines.data.map((l) => ({ date: l.date, type: TYPE[l.type], cls: l.type, txn: l.txn_id, qty: (l.type === 'purchase' || l.type === 'sale_return' ? 1 : l.type === 'other' ? 0 : -1) * l.qty, raw: l.qty, price: l.price, note: l.description })),
     ...adj.data.map((a) => ({ date: a.date, type: KIND[a.kind], cls: '', adj: a.id, qty: (a.kind === 'reduce' ? -1 : 1) * a.qty, raw: a.qty, price: a.at_price, note: a.description })),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
+  const low = !i.is_service && (i.stock < 0 || (i.active && i.min_stock > 0 && i.stock <= i.min_stock));
   const facts = [];
   if (!i.is_service) facts.push(['📦', 'Stock quantity', `${qty(i.stock)} <small>${esc(i.unit || 'Pcs')}</small>`, low ? 'red' : 'green']);
   if (can('sale_price')) facts.push(['🏷️', 'Sale price', money(i.sale_price), 'purple']);
   if (can('purchase_price')) facts.push(['🛒', 'Purchase price', money(i.purchase_price), 'blue']);
   if (can('purchase_price') && !i.is_service) facts.push(['💰', 'Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0)), 'gold']);
   const chips = [i.category && `📁 ${esc(i.category)}`, i.code && `# ${esc(i.code)}`, i.location && `📍 ${esc(i.location)}`,
-    i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
+    i.active && i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
     + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '')
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
   $('#idet').innerHTML = `<div class="panel hero near"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
