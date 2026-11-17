@@ -57,7 +57,7 @@ const balWord = (b) => (b == null ? '' : b > 0.005 ? "You'll get" : b < -0.005 ?
 let signup = false;
 function showLogin(msg) {
   $('#app').classList.add('hide'); $('#login').classList.remove('hide');
-  $('#loginName').textContent = CFG.appName; $('#lmsg').textContent = msg || '';
+  $('#lmsg').textContent = msg || '';
 }
 $('#lswap').onclick = () => {
   signup = !signup;
@@ -90,12 +90,12 @@ async function boot() {
     await loadMaster();
   } catch (err) { return showLogin(err.message); }
   $('#login').classList.add('hide'); $('#app').classList.remove('hide');
-  $('#brand').textContent = CFG.appName; document.title = CFG.appName;
-  $('#whoName').textContent = ME.name; $('#whoRole').textContent = owner() ? 'Owner' : 'Staff';
-  const menu = [['home', 'Home'], ['parties', 'Parties'], ['items', 'Items'], ['entries', 'Transactions']];
-  if (can('reports')) menu.push(['reports', 'Reports']);
-  if (owner()) menu.push(['staff', 'Staff & Access']);
-  $('#menu').innerHTML = menu.map(([k, v]) => `<a href="#${k}" data-k="${k}">${v}</a>`).join('');
+  document.title = CFG.appName;
+  $('#whoName').textContent = ME.name; $('#whoRole').textContent = owner() ? '(Owner)' : '(Staff)';
+  const menu = [['home', 'Dashboard', '🏠'], ['parties', 'Parties', '👥'], ['items', 'Items', '📦'], ['entries', 'Transactions', '🧾']];
+  if (can('reports')) menu.push(['reports', 'Reports', '📊']);
+  if (owner()) menu.push(['staff', 'Staff & Access', '⚙️']);
+  $('#menu').innerHTML = menu.map(([k, v, ic]) => `<a href="#${k}" data-k="${k}"><i>${ic}</i>${v}</a>`).join('');
   route();
 }
 window.onhashchange = () => ME && route();
@@ -116,6 +116,7 @@ async function route() {
   try { await VIEWS[view](); } catch (err) { $('#view').innerHTML = `<div class="empty bad">${esc(err.message)}</div>`; }
 }
 const refresh = async () => { await loadMaster(); await route(); };
+$('#refreshBtn').onclick = async () => { try { await refresh(); toast('Refreshed'); } catch (err) { toast(err.message); } };
 
 // ---------- shared pieces ----------
 function txnTable(rows, { party = true } = {}) {
@@ -156,7 +157,7 @@ const field = (id, label, value = '', attrs = '') => `<label class="f">${label}<
 
 // ---------- home ----------
 VIEWS.home = async () => {
-  $('#title').textContent = 'Home';
+  $('#title').textContent = 'Dashboard';
   const { data: recent, error } = await sb.from('v_transactions').select('*').order('date', { ascending: false }).order('id', { ascending: false }).limit(15);
   if (error) throw new Error(error.message);
   const goods = ITEMS.filter((i) => i.active && !i.is_service);
@@ -169,7 +170,7 @@ VIEWS.home = async () => {
   if (can('purchase_price')) cards.push(['Stock value', money(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0))]);
   cards.push(['Items', goods.length], ['Low stock items', `<span class="${low ? 'warn' : ''}">${low}</span>`], ['Parties', PARTIES.filter((p) => p.active).length]);
   $('#view').innerHTML = `<div class="cards">${cards.map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>
-    <div class="panel"><div class="hd"><h2>Recent transactions</h2><a class="btn sm" href="#entries">See all</a></div>${txnTable(recent)}</div>`;
+    <div class="panel"><div class="hd"><h2>Recent transactions</h2><a class="btn sm buy" href="#entries">See all</a></div>${txnTable(recent)}</div>`;
 };
 
 // ---------- parties ----------
@@ -381,7 +382,7 @@ function newEntry(type, partyId) {
 function moreMenu() {
   const opts = [['sale_return', 'Sale Return'], ['purchase_return', 'Purchase Return']];
   if (can('party_balance')) opts.push(['payment_in', 'Payment-In'], ['payment_out', 'Payment-Out']);
-  dialog('Add entry', `<div class="grid">${opts.map(([k, v]) => `<button class="btn" type="button" data-new="${k}">${v}</button>`).join('')}</div>`, null);
+  dialog('Add entry', `<div class="grid">${opts.map(([k, v]) => `<button class="btn buy" type="button" data-new="${k}">${v}</button>`).join('')}</div>`, null);
 }
 
 // ---------- reports ----------
@@ -410,7 +411,7 @@ VIEWS.reports = async () => {
   }
   const cell = (c) => (typeof c === 'number' ? `<td class="r">${qty(c)}</td>` : `<td>${esc(c)}</td>`);
   $('#view').innerHTML = `<div class="panel"><div class="hd"><div class="filters" style="margin-right:auto">${
-    tabs.map(([k, v]) => `<button class="btn sm ${REP.tab === k ? 'pri' : ''}" data-rep="${k}">${v}</button>`).join('')}</div>
+    tabs.map(([k, v]) => `<button class="btn sm ${REP.tab === k ? 'pri' : 'lite'}" data-rep="${k}">${v}</button>`).join('')}</div>
     ${REP.tab === 'itemwise' ? `<input type="date" id="rf" value="${REP.from}"><span>to</span><input type="date" id="rt" value="${REP.to}">` : ''}
     <button class="btn sm" id="rcsv">EXCEL (CSV)</button></div>${foot ? `<div class="facts"><div>${foot}</div></div>` : ''}
     ${rows.length ? `<div class="tw"><table><thead><tr>${head.map((h, n) => `<th class="${typeof rows[0][n] === 'number' ? 'r' : ''}">${h.toUpperCase()}</th>`).join('')}</tr></thead><tbody>${
