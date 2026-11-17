@@ -388,7 +388,7 @@ VIEWS.items = async () => {
     hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
     $('#irows').innerHTML = hit.map((i) => {
       const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
-      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span>${canEditItem ? `<button type="button" class="redit" data-item-edit="${i.id}" title="Edit this item" aria-label="Edit ${esc(i.name)}">✏️</button>` : ''}</div>`;
+      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
     }).join('') || '<div class="empty">No item found</div>';
     bar();
   };
