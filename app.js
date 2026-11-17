@@ -19,7 +19,7 @@ const PERMS = [
   ['entries', 'Can make entries (sale, purchase, stock)'],
 ];
 
-let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = [];
+let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
 const sees = (type) => can(type === 'sale' || type === 'sale_return' ? 'sale_price'
@@ -51,7 +51,7 @@ async function loadMaster() {
   // CEP + DCEP of the same design are sold together: one pick adds both lines.
   const fam = (p) => new Map(ITEMS.filter((i) => i.active && i.name.toUpperCase().startsWith(p + '-')).map((i) => [i.name.slice(p.length + 1).trim().toLowerCase(), i]));
   const cep = fam('CEP'), dcep = fam('DCEP');
-  BUNDLES = [...dcep].filter(([k]) => cep.has(k)).map(([k, d]) => ({ name: d.name.slice(5).trim(), cep: cep.get(k), dcep: d }));
+  BUNDLES = { cep: [...cep.values()], dcep: [...dcep.values()], twin: new Map([...cep].filter(([k]) => dcep.has(k)).map(([k, c]) => [c.id, dcep.get(k).id])) };
 }
 const balHtml = (b) => (b == null ? '<span class="mute">—</span>'
   : b > 0.005 ? `<span class="good">${money(b)}</span>` : b < -0.005 ? `<span class="bad">${money(-b)}</span>` : money(0));
@@ -344,8 +344,12 @@ function billForm(type) {
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
-    ${BUNDLES.length ? `<div class="bundle"><b>CEP + DCEP bundle</b><select id="b_design"><option value="">Choose design</option>${BUNDLES.map((b, n) => `<option value="${n}">${esc(b.name)}</option>`).join('')}</select>
-      <input id="b_qty" type="number" step="any" min="0" placeholder="Qty" style="width:90px"><button class="btn sm gold" type="button" id="b_add">+ ADD BOTH</button><span class="mute" id="b_msg"></span></div>` : ''}
+    ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><b>CEP + DCEP<br>bundle</b>
+      <label class="f">CEP item<select id="b_i1"><option value="">Choose CEP</option>${BUNDLES.cep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+      <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label>
+      <label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+      <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label>
+      <button class="btn sm gold" type="button" id="b_add">+ ADD BOTH</button><span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span><label class="f" id="paidWrap">Paid now<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>
     <label class="f" style="margin-top:10px">Note<input id="f_note"></label>`,
@@ -392,15 +396,24 @@ function billForm(type) {
     $('.li', tr).value = LABEL.get(it.id); $('.lq', tr).value = q;
     if (see) $('.lp', tr).value = (sale ? it.sale_price : it.purchase_price) ?? '';
   };
-  if ($('#b_add')) $('#b_add').onclick = () => {
-    const b = BUNDLES[$('#b_design').value], q = Number($('#b_qty').value);
-    if (!b) { $('#b_msg').textContent = 'Choose a design'; return; }
-    if (!(q > 0)) { $('#b_msg').textContent = 'Enter quantity'; return; }
-    fill(b.cep, q); fill(b.dcep, q);
-    $('#lbody').insertAdjacentHTML('beforeend', line());
-    $('#b_msg').textContent = `Added ${b.cep.name} and ${b.dcep.name} × ${q}`;
-    $('#b_design').value = ''; $('#b_qty').value = ''; calc();
-  };
+  if ($('#b_add')) {
+    let q2Touched = false, i2Touched = false;
+    const item = (id) => ITEMS.find((i) => i.id === Number($(id).value));
+    $('#b_i1').onchange = () => { const t = BUNDLES.twin.get(Number($('#b_i1').value)); if (!i2Touched && t) $('#b_i2').value = t; };
+    $('#b_i2').onchange = () => { i2Touched = true; };
+    $('#b_q1').oninput = () => { if (!q2Touched) $('#b_q2').value = $('#b_q1').value; };
+    $('#b_q2').oninput = () => { q2Touched = true; };
+    $('#b_add').onclick = () => {
+      const c = item('#b_i1'), d = item('#b_i2'), q1 = Number($('#b_q1').value), q2 = Number($('#b_q2').value);
+      if (!c || !d) { $('#b_msg').textContent = 'Choose the CEP item and the DCEP item'; return; }
+      if (!(q1 > 0) || !(q2 > 0)) { $('#b_msg').textContent = 'Enter both quantities'; return; }
+      fill(c, q1); fill(d, q2);
+      $('#lbody').insertAdjacentHTML('beforeend', line());
+      $('#b_msg').textContent = `Added: ${c.name} × ${q1} and ${d.name} × ${q2}`;
+      for (const id of ['#b_i1', '#b_i2', '#b_q1', '#b_q2']) $(id).value = '';
+      q2Touched = false; i2Touched = false; calc();
+    };
+  }
   $('#f_party').onchange = calc; calc();
 }
 function newEntry(type, partyId) {
