@@ -7,7 +7,7 @@ const qty = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigit
 const fdate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
 const today = () => new Date().toLocaleDateString('en-CA');
 const monthStart = () => today().slice(0, 8) + '01';
-const TYPE = { sale: 'Sale', purchase: 'Purchase', sale_return: 'Sale Return', purchase_return: 'Purchase Return',
+const TYPE = { sale: 'Sale', purchase: 'Purchase', sale_return: 'Credit Note', purchase_return: 'Debit Note',
   payment_in: 'Payment-In', payment_out: 'Payment-Out', other: 'Other' };
 const PERMS = [
   ['sale_price', 'Can see sale price and sale amounts'],
@@ -109,7 +109,7 @@ async function route() {
   const acts = [];
   if (can('entries')) {
     acts.push('<button class="btn sale" data-new="sale">+ ADD SALE</button>', '<button class="btn buy" data-new="purchase">+ ADD PURCHASE</button>');
-    acts.push('<button class="btn" data-more="1">+ MORE</button>');
+    acts.push('<button class="btn gold" data-new="sale_return">+ CREDIT NOTE</button>', '<button class="btn" data-more="1">+ MORE</button>');
   }
   $('#actions').innerHTML = acts.join('');
   $('#view').innerHTML = '<div class="empty">Loading…</div>';
@@ -297,7 +297,7 @@ VIEWS.entries = async () => {
     <select id="ft"><option value="">All types</option>${Object.entries(TYPE).map(([k, v]) => `<option value="${k}" ${FILTER.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
     <input type="date" id="ff" value="${FILTER.from}"><span>to</span><input type="date" id="fto" value="${FILTER.to}">
     <button class="btn sm" id="fcsv">EXCEL (CSV)</button></div></div>
-    ${can('sale_price') || can('purchase_price') ? `<div class="facts">${can('sale_price') ? `<div><span>Sale</span><b>${money(sum('sale'))}</b></div><div><span>Sale return</span><b>${money(sum('sale_return'))}</b></div>` : ''}${
+    ${can('sale_price') || can('purchase_price') ? `<div class="facts">${can('sale_price') ? `<div><span>Sale</span><b>${money(sum('sale'))}</b></div><div><span>Credit notes</span><b>${money(sum('sale_return'))}</b></div>` : ''}${
       can('purchase_price') ? `<div><span>Purchase</span><b>${money(sum('purchase'))}</b></div>` : ''}</div>` : ''}${txnTable(rows)}</div>`;
   const go = () => { FILTER = { type: $('#ft').value, from: $('#ff').value || monthStart(), to: $('#fto').value || today() }; route(); };
   $('#ft').onchange = go; $('#ff').onchange = go; $('#fto').onchange = go;
@@ -328,7 +328,7 @@ function billForm(type) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
   const line = () => `<tr><td><input class="li" list="itemlist" placeholder="Type item name"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
-  dialog(TYPE[type], `<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
+  dialog(type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', today(), 'type="date"')}${field('f_ref', 'Bill no. (blank = next number)', '')}</div>
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
@@ -380,7 +380,7 @@ function newEntry(type, partyId) {
   if (type === 'payment_in' || type === 'payment_out') paymentForm(type, partyId); else billForm(type);
 }
 function moreMenu() {
-  const opts = [['sale_return', 'Sale Return'], ['purchase_return', 'Purchase Return']];
+  const opts = [['sale_return', 'Credit Note (Sale Return)'], ['purchase_return', 'Debit Note (Purchase Return)']];
   if (can('party_balance')) opts.push(['payment_in', 'Payment-In'], ['payment_out', 'Payment-Out']);
   dialog('Add entry', `<div class="grid">${opts.map(([k, v]) => `<button class="btn buy" type="button" data-new="${k}">${v}</button>`).join('')}</div>`, null);
 }
