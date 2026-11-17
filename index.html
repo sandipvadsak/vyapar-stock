@@ -125,6 +125,9 @@ tbody tr.click:hover{background:#e3dcfb}
 .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 4px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--slate)}
 .seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
 .selbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);background:#fff}
+.selbar.active{background:#fff4e5;border-bottom-color:#fdba74}
+.selbar.active #ibulk{background:#c2410c;box-shadow:0 3px 0 #9a3412;color:#fff}
+#ibulk2{background:#c2410c;box-shadow:0 3px 0 #9a3412}
 .selbar label.c{padding:0;font-weight:700;font-size:13px;cursor:pointer}
 .selbar input,.row .isel{width:17px;height:17px;accent-color:var(--acc);cursor:pointer;flex:none}
 .row .isel{margin:2px 10px 0 0}
@@ -312,7 +315,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=51"></script>
-<script src="app.js?v=51"></script>
+<script src="config.js?v=52"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>

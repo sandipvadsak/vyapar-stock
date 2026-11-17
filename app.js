@@ -346,6 +346,7 @@ function partyForm(p = {}) {
 // ---------- items ----------
 let ITEM_SHOW = 'active';   // active | inactive | all
 let ITEM_SEL = new Set();   // ticked items (for doing one thing to many items)
+let ITEM_BAR = null;         // redraws the tick counter and the buttons that act on the ticked items
 // what the ticked items can have done to them on this tab: Active -> mark inactive, Inactive -> delete
 const bulkMode = () => (ITEM_SHOW === 'active' && can('manage_items') ? 'off' : ITEM_SHOW === 'inactive' && HAS_ITEMDEL ? 'del' : '');
 VIEWS.items = async () => {
@@ -367,8 +368,20 @@ VIEWS.items = async () => {
     const n = ITEM_SEL.size, shown = hit.filter((i) => ITEM_SEL.has(i.id)).length;
     $('#icount').textContent = n ? `${n} selected` : `Select all (${hit.length})`;
     $('#iall').checked = hit.length > 0 && shown === hit.length; $('#iall').indeterminate = shown > 0 && shown < hit.length;
-    $('#ibulk').disabled = !n; $('#ibulk').textContent = (mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE') + (n ? ` (${n})` : '');
+    const label = (mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE') + (n ? ` (${n})` : '');
+    $('#ibulk').disabled = !n; $('#ibulk').textContent = label;
+    $('.selbar').classList.toggle('active', n > 0);
+    // While items are ticked, the buttons beside the open item act on ALL ticked items,
+    // so nobody deletes just the one open item by mistake.
+    const hd = $('#idet .hd');
+    if (hd) {
+      hd.querySelectorAll('[data-item-del],[data-item-toggle],[data-adjust],[data-item-edit]').forEach((b) => b.classList.toggle('hide', n > 0));
+      let big = hd.querySelector('#ibulk2');
+      if (n > 0 && !big) { hd.insertAdjacentHTML('beforeend', '<button class="btn danger" type="button" id="ibulk2"></button>'); big = hd.querySelector('#ibulk2'); big.onclick = () => $('#ibulk').click(); }
+      if (big) { big.classList.toggle('hide', !n); big.textContent = label; }
+    }
   };
+  ITEM_BAR = mode ? bar : null;
   const draw = () => {
     const s = $('#isearch').value.toLowerCase();
     hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
@@ -402,9 +415,9 @@ async function bulkItems(mode) {
       else await rpc('save_item', { p: { id: i.id, name: i.name, code: i.code, category_id: i.category_id, unit: i.unit, hsn: i.hsn, tax_rate: i.tax_rate, min_stock: i.min_stock,
         location: i.location, description: i.description, sale_price: i.sale_price, purchase_price: i.purchase_price, mrp: i.mrp, active: false } });
     } catch (err) { failed.push(`${i.name}: ${err.message}`); }
-    done++; $('#ibulk').textContent = `${done} / ${n}…`;
+    done++; const t = `${done} / ${n}…`; if ($('#ibulk')) $('#ibulk').textContent = t; if ($('#ibulk2')) $('#ibulk2').textContent = t;
   };
-  $('#ibulk').disabled = true;
+  $('#ibulk').disabled = true; if ($('#ibulk2')) $('#ibulk2').disabled = true;
   const queue = picked.slice();
   await Promise.all(Array.from({ length: 4 }, async () => { while (queue.length) await one(queue.shift()); }));
   ITEM_SEL = new Set(); SEL.item = null;
@@ -443,7 +456,9 @@ async function itemDetail() {
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
         (r.adj && HAS_EDIT && (owner() || can('edit_entries')) ? `<button class="btn sm buy" data-adj-edit="${r.adj}">EDIT</button> ` : '') + (r.adj && owner() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
+  if (ITEM_BAR) ITEM_BAR();
 }
+
 function itemForm(i = {}) {
   dialog(i.id ? 'Edit item' : 'Add item', `<div class="grid">${field('f_name', 'Item name *', i.name, 'required')}${field('f_code', 'Item code', i.code)}
     <label class="f">Category<input id="f_cat" list="catlist" value="${esc(i.category || '')}"><datalist id="catlist">${CATS.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist></label>
