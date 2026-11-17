@@ -344,11 +344,11 @@ function billForm(type) {
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
-    ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><b>CEP + DCEP<br>bundle</b>
-      <label class="f">CEP item<select id="b_i1"><option value="">Choose CEP</option>${BUNDLES.cep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-      <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label>
-      <label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-      <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label>
+    ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><div class="btitle">CEP + DCEP bundle</div>
+      <div class="bgrp cep"><span class="btag">CEP</span><label class="f">CEP item<select id="b_i1"><option value="">Choose CEP</option>${BUNDLES.cep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+        <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label></div>
+      <div class="bgrp dcep"><span class="btag">DCEP</span><label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+        <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label></div>
       <button class="btn sm gold" type="button" id="b_add">+ ADD BOTH</button><span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span><label class="f" id="paidWrap">Paid now<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>

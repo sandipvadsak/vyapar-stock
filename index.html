@@ -117,7 +117,17 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 .lines td{padding:5px 6px}
 .lines tbody tr{background:none}
 .lines th{position:static}
-.bundle{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding:10px 12px;border-radius:10px;background:#fff8e1;border:1px solid #f8e7ad}
+.bundle{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding:12px;border-radius:12px;background:#f7f8fc;border:1px solid var(--line)}
+.btitle{flex-basis:100%;font-weight:800;font-size:14px}
+.bgrp{display:flex;gap:10px;align-items:flex-end;flex:1;min-width:300px;padding:10px 12px 12px;border-radius:12px;border:2px solid;position:relative}
+.bgrp select{min-width:0;width:100%}
+.bgrp label.f:first-of-type{flex:1;min-width:0}
+.bgrp label.f{font-weight:800}
+.btag{position:absolute;top:-11px;left:12px;color:#fff;font-weight:800;font-size:12px;letter-spacing:.6px;padding:2px 12px;border-radius:10px}
+.bgrp.cep{background:#f3edff;border-color:var(--acc)}.bgrp.cep label.f{color:var(--acc-d)}.bgrp.cep .btag{background:var(--acc)}
+.bgrp.cep select,.bgrp.cep input{border-color:#b9a2f3}
+.bgrp.dcep{background:#e8f1ff;border-color:var(--blue)}.bgrp.dcep label.f{color:var(--blue-d)}.bgrp.dcep .btag{background:var(--blue)}
+.bgrp.dcep select,.bgrp.dcep input{border-color:#9dbcf5}
 .totals{display:flex;justify-content:flex-end;gap:22px;align-items:center;margin-top:12px;flex-wrap:wrap}
 .totals b{font-size:18px}
 #login{min-height:100%;display:grid;place-items:center;padding:20px;background:var(--side)}
@@ -178,7 +188,7 @@ label.c{display:flex;gap:8px;align-items:center;padding:5px 0}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="config.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
