@@ -21,7 +21,7 @@ const PERMS = [
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = [];
-let HAS_BIN = false, HAS_EDIT = false, HAS_ACCT = false, ACCOUNTS = [];
+let HAS_BIN = false, HAS_EDIT = false, HAS_ACCT = false, HAS_ITEMDEL = false, ACCOUNTS = [];
 const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
 // Each account gets its own colour (by its place in the alphabetical list), the same everywhere.
 const ACCT_COLORS = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#475569', '#be185d', '#0f766e', '#e11d48'];
@@ -57,6 +57,8 @@ async function loadMaster() {
   ]);
   HAS_BIN = ME?.role === 'owner' && !(await sb.from('v_recycle_bin').select('id').limit(1)).error;
   HAS_EDIT = !(await sb.from('v_transactions').select('edited_at').limit(1)).error;
+  // is the delete-item function in the database yet? (id -1 never exists, so nothing is deleted)
+  HAS_ITEMDEL = ME?.role === 'owner' && (await sb.rpc('delete_item', { p_id: -1 })).error?.code === 'P0001';
   HAS_ACCT = !(await sb.from('v_transactions').select('account').limit(1)).error;
   ACCOUNTS = HAS_ACCT ? ((await sb.rpc('list_accounts')).data || []) : [];
   const seen = new Map();
@@ -327,7 +329,7 @@ async function itemDetail() {
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
   $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2><div class="chips">${chips}</div></div>${
     can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
-    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}</div>
+    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
@@ -683,12 +685,12 @@ VIEWS.bin = async () => {
   if (error) throw new Error(/v_recycle_bin/.test(error.message) ? 'Recycle Bin is not set up in the database yet.' : error.message);
   const KIND = { opening: 'Opening Stock', add: 'Add Stock', reduce: 'Reduce Stock' };
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${data.length} deleted ${data.length === 1 ? 'entry' : 'entries'}</h2>
+  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${data.length} deleted ${data.length === 1 ? 'thing' : 'things'}</h2>
     <span class="mute">Deleted entries stay here until you restore them or delete them forever. They do not count in stock or balances.</span></div>${
     data.length ? `<div class="tw"><table><thead><tr><th>DELETED ON</th><th>DELETED BY</th><th>TYPE</th><th>ENTRY DATE</th><th>PARTY / ITEM</th><th class="r">AMOUNT / QTY</th><th></th></tr></thead><tbody>${
-      data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}</td><td><span class="tag ${r.kind === 'txn' ? r.type : ''}">${r.kind === 'txn' ? TYPE[r.type] : KIND[r.type]}</span></td>
-        <td>${fdate(r.date)}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.item)}</td>
-        <td class="r">${r.kind === 'txn' ? money(r.total) : qty(r.qty)}</td>
+      data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}</td><td><span class="tag ${r.kind === 'txn' ? r.type : r.kind === 'item' ? 'purchase' : ''}">${r.kind === 'txn' ? TYPE[r.type] : r.kind === 'item' ? 'Item' : KIND[r.type]}</span></td>
+        <td>${fdate(r.date)}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.kind === 'item' ? r.item + (r.lines ? ` (used in ${r.lines} entries)` : ' (never used)') : r.item)}</td>
+        <td class="r">${r.kind === 'txn' ? money(r.total) : r.kind === 'item' ? 'stock ' + qty(r.qty) : qty(r.qty)}</td>
         <td><button class="btn sm buy" data-restore="${r.kind}:${r.id}">RESTORE</button> <button class="btn sm" data-purge="${r.kind}:${r.id}">DELETE FOREVER</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty">Recycle Bin is empty</div>'}</div>`;
 };
@@ -718,7 +720,7 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit],[data-item-del]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
@@ -748,11 +750,17 @@ document.addEventListener('click', async (e) => {
         await refresh(); toast(i.active ? 'Marked inactive' : 'Marked active');
       }
     }
+    else if (d.itemDel) {
+      const i = ITEMS.find((x) => x.id === Number(d.itemDel));
+      if (await ask('Delete this item?', `"${i.name}" will move to the Recycle Bin and disappear from every item list. Old bills still show its name. You can restore it later.`, 'YES, DELETE', 'danger')) {
+        await rpc('delete_item', { p_id: i.id }); SEL.item = null; await refresh(); toast('Item moved to Recycle Bin');
+      }
+    }
     else if (d.low) lowDialog();
     else if (d.go) location.hash = d.go;
     else if (d.goitem) { SEL.item = Number(d.goitem); $('#dlg').close(); if (location.hash === '#items') await route(); else location.hash = 'items'; }
-    else if (d.restore) { const [k, id] = d.restore.split(':'); if (!(await ask('Restore this entry?', 'It will come back into the lists, and stock and balance will count it again.', 'YES, RESTORE', 'buy'))) return; await rpc('restore_entry', { p_kind: k, p_id: Number(id) }); await refresh(); toast('Restored'); }
-    else if (d.purge) { const [k, id] = d.purge.split(':'); if (await ask('Delete forever?', 'This entry will be removed completely. It cannot be brought back.', 'YES, DELETE FOREVER', 'danger')) { await rpc('purge_entry', { p_kind: k, p_id: Number(id) }); await route(); toast('Deleted forever'); } }
+    else if (d.restore) { const [k, id] = d.restore.split(':'); if (!(await ask(k === 'item' ? 'Restore this item?' : 'Restore this entry?', k === 'item' ? 'It will come back into the Inactive list. Mark it active there if you want to use it in bills.' : 'It will come back into the lists, and stock and balance will count it again.', 'YES, RESTORE', 'buy'))) return; await rpc('restore_entry', { p_kind: k, p_id: Number(id) }); await refresh(); toast('Restored'); }
+    else if (d.purge) { const [k, id] = d.purge.split(':'); if (await ask('Delete forever?', k === 'item' ? 'This works only for an item that was never used in any entry. It cannot be brought back.' : 'This entry will be removed completely. It cannot be brought back.', 'YES, DELETE FOREVER', 'danger')) { await rpc('purge_entry', { p_kind: k, p_id: Number(id) }); await route(); toast('Deleted forever'); } }
     else if (d.user) userForm(d.user);
   } catch (err) { toast(err.message); }
 });
