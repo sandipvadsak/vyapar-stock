@@ -306,7 +306,7 @@ VIEWS.parties = async () => {
   const draw = () => {
     const s = $('#psearch').value.toLowerCase();
     $('#prows').innerHTML = list.filter((p) => p.name.toLowerCase().includes(s)).map((p) =>
-      `<div class="row ${p.id === SEL.party ? 'on' : ''}" data-party="${p.id}"><span class="n">${esc(p.name)}</span><span>${isOwn(p) ? '<span class="mute">Own</span>' : balHtml(p.balance)}</span></div>`).join('') || '<div class="empty">No party found</div>';
+      `<div class="row ${p.id === SEL.party ? 'on' : ''}" data-party="${p.id}"><span class="n">${esc(p.name)}</span><span>${isOwn(p) ? '<span class="mute">—</span>' : balHtml(p.balance)}</span></div>`).join('') || '<div class="empty">No party found</div>';
   };
   $('#psearch').oninput = draw; draw();
   await partyDetail();
@@ -321,7 +321,7 @@ async function partyDetail() {
     ['purchase_return', 'Debit notes', '↪️', 'gold'], ['payment_in', 'Payment-In', '⬇️', 'green'], ['payment_out', 'Payment-Out', '⬆️', 'red']];
   const totals = KINDS.map(([type, label, ic, c]) => { const r = rows.filter((t) => t.type === type); return { label, ic, c, n: r.length, amt: r.some((t) => t.total != null) ? r.reduce((s, t) => s + (t.total || 0), 0) : null }; }).filter((k) => k.n);
   $('#pdet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(p.name)}</h2><div class="chips">${
-    [isOwn(p) && 'Own account · no balance or unpaid shown', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
+    [isOwn(p) && 'No balance counted for this party', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
     pay ? `<button class="btn sm" data-new="payment_in" data-for="${p.id}">+ PAYMENT-IN</button><button class="btn sm" data-new="payment_out" data-for="${p.id}">+ PAYMENT-OUT</button>` : ''}${
     can('manage_parties') ? `<button class="btn sm" data-party-edit="${p.id}">EDIT</button>` : ''}</div>
     <div class="stats">${p.balance == null || isOwn(p) ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
