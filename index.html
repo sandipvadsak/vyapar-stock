@@ -142,6 +142,21 @@ tbody tr.click:hover{background:#e3dcfb}
 .hero>.hd{align-items:flex-start;border-bottom:none;padding:16px 18px 6px}
 .hero .ttl{margin-right:auto;min-width:0}
 .hero .ttl h2{font-size:21px;font-weight:800;margin:0}
+.hero.mid{overflow:visible}
+.hero.mid>.hd{justify-content:center;padding:22px 18px 8px}
+.hero.mid .ttl{margin:0 auto;text-align:center;display:flex;flex-direction:column;align-items:center;max-width:100%}
+.hero.mid .ttl h2{font-size:28px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+.hero.mid .chips{justify-content:center}
+.nameline{display:flex;align-items:center;justify-content:center;gap:10px;max-width:100%}
+.kebab{position:relative;flex:none}
+.kb{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:800;line-height:1;cursor:pointer;color:var(--slate)}
+.kb:hover{background:#f3edff;border-color:#cdbcf8;color:var(--acc-d)}
+.kmenu{position:absolute;top:42px;right:0;z-index:20;min-width:200px;background:#fff;border:1px solid #d7dcea;border-radius:12px;box-shadow:0 14px 30px rgba(15,25,60,.25);padding:6px;display:flex;flex-direction:column;text-align:left}
+.kmenu.hide{display:none}
+.kmenu button{border:none;background:none;text-align:left;padding:10px 12px;border-radius:8px;font-weight:700;cursor:pointer;color:var(--ink);white-space:nowrap}
+.kmenu button:hover{background:#f3edff}
+.kmenu button.dng{color:#c2410c}
+.kmenu button.dng:hover{background:#fff1e6}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
 .chip{background:#eef1f8;color:#3b4763;border-radius:20px;padding:3px 11px;font-size:12.5px;font-weight:600}
 .chip.lowchip{background:#fde2e2;color:#b91c1c}
@@ -315,7 +330,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=52"></script>
-<script src="app.js?v=52"></script>
+<script src="config.js?v=53"></script>
+<script src="app.js?v=53"></script>
 </body>
 </html>

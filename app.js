@@ -375,9 +375,9 @@ VIEWS.items = async () => {
     // so nobody deletes just the one open item by mistake.
     const hd = $('#idet .hd');
     if (hd) {
-      hd.querySelectorAll('[data-item-del],[data-item-toggle],[data-adjust],[data-item-edit]').forEach((b) => b.classList.toggle('hide', n > 0));
+      hd.querySelectorAll('.kebab').forEach((b) => b.classList.toggle('hide', n > 0));
       let big = hd.querySelector('#ibulk2');
-      if (n > 0 && !big) { hd.insertAdjacentHTML('beforeend', '<button class="btn danger" type="button" id="ibulk2"></button>'); big = hd.querySelector('#ibulk2'); big.onclick = () => $('#ibulk').click(); }
+      if (n > 0 && !big) { hd.querySelector('.ttl').insertAdjacentHTML('beforeend', '<button class="btn danger" type="button" id="ibulk2" style="margin-top:10px"></button>'); big = hd.querySelector('#ibulk2'); big.onclick = () => $('#ibulk').click(); }
       if (big) { big.classList.toggle('hide', !n); big.textContent = label; }
     }
   };
@@ -449,9 +449,16 @@ async function itemDetail() {
     i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
     + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '')
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
-  $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2><div class="chips">${chips}</div></div>${
-    can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
-    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
+  // the item's actions live in a three-dot menu beside its name
+  const acts = [
+    can('entries') && !i.is_service && `<button type="button" data-adjust="${i.id}">📦 Adjust stock</button>`,
+    can('manage_items') && `<button type="button" data-item-edit="${i.id}">✏️ Edit item</button>`,
+    can('manage_items') && `<button type="button" data-item-toggle="${i.id}">${i.active ? '🚫 Mark inactive' : '✅ Mark active'}</button>`,
+    HAS_ITEMDEL && !i.active && `<button type="button" class="dng" data-item-del="${i.id}">🗑️ Delete item</button>`,
+  ].filter(Boolean);
+  $('#idet').innerHTML = `<div class="panel hero mid"><div class="hd"><div class="ttl"><div class="nameline"><h2>${esc(i.name)}</h2>${
+    acts.length ? `<div class="kebab"><button type="button" class="kb" data-kebab="1" title="Options" aria-label="Options">⋮</button><div class="kmenu hide">${acts.join('')}</div></div>` : ''}</div>
+    <div class="chips">${chips}</div></div></div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
@@ -844,6 +851,9 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
+  const kb = e.target.closest('[data-kebab]');
+  document.querySelectorAll('.kmenu').forEach((m) => { if (!kb || m !== kb.nextElementSibling) m.classList.add('hide'); });
+  if (kb) { kb.nextElementSibling.classList.toggle('hide'); return; }
   const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit],[data-item-del],[data-wa]');
   if (!el || !ME) return;
   const d = el.dataset;
