@@ -345,26 +345,73 @@ function partyForm(p = {}) {
 
 // ---------- items ----------
 let ITEM_SHOW = 'active';   // active | inactive | all
+let ITEM_SEL = new Set();   // ticked items (for doing one thing to many items)
+// what the ticked items can have done to them on this tab: Active -> mark inactive, Inactive -> delete
+const bulkMode = () => (ITEM_SHOW === 'active' && can('manage_items') ? 'off' : ITEM_SHOW === 'inactive' && HAS_ITEMDEL ? 'del' : '');
 VIEWS.items = async () => {
   $('#title').textContent = 'Items';
   const nA = ITEMS.filter((i) => i.active).length, nI = ITEMS.length - nA;
   const list = ITEMS.filter((i) => ITEM_SHOW === 'all' || i.active === (ITEM_SHOW === 'active'));
   if (!list.find((i) => i.id === SEL.item)) SEL.item = list[0]?.id ?? null;
+  const mode = bulkMode(), ids = new Set(list.map((i) => i.id));
+  ITEM_SEL = new Set([...ITEM_SEL].filter((id) => mode && ids.has(id)));
   $('#view').innerHTML = `<div class="split"><div class="panel list"><div class="hd"><input class="search" id="isearch" placeholder="Search item or code">${
     can('manage_items') ? '<button class="btn pri sm" data-item-new="1">+ ADD ITEM</button>' : ''}</div>
     <div class="seg">${[['active', `Active (${nA})`], ['inactive', `Inactive (${nI})`], ['all', `All (${ITEMS.length})`]].map(([k, v]) => `<button type="button" class="${ITEM_SHOW === k ? 'on' : ''}" data-itemshow="${k}">${v}</button>`).join('')}</div>
+    ${mode ? `<div class="selbar"><label class="c"><input type="checkbox" id="iall"> <span id="icount">Select all</span></label>
+      <button class="btn sm ${mode === 'del' ? 'danger' : 'lite'}" id="ibulk" disabled>${mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE'}</button></div>` : ''}
     <div class="rows" id="irows"></div></div><div class="det" id="idet"></div></div>`;
+  let hit = [];
+  const bar = () => {
+    if (!mode) return;
+    const n = ITEM_SEL.size, shown = hit.filter((i) => ITEM_SEL.has(i.id)).length;
+    $('#icount').textContent = n ? `${n} selected` : `Select all (${hit.length})`;
+    $('#iall').checked = hit.length > 0 && shown === hit.length; $('#iall').indeterminate = shown > 0 && shown < hit.length;
+    $('#ibulk').disabled = !n; $('#ibulk').textContent = (mode === 'del' ? 'DELETE SELECTED' : 'MARK INACTIVE') + (n ? ` (${n})` : '');
+  };
   const draw = () => {
     const s = $('#isearch').value.toLowerCase();
-    const hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
-    $('#irows').innerHTML = hit.slice(0, 400).map((i) => {
+    hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
+    $('#irows').innerHTML = hit.map((i) => {
       const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
-      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}"><span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
-    }).join('') + (hit.length > 400 ? `<div class="empty">${hit.length - 400} more — type to search</div>` : '') || '<div class="empty">No item found</div>';
+      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}">${mode ? `<input type="checkbox" class="isel" data-sel="${i.id}" ${ITEM_SEL.has(i.id) ? 'checked' : ''}>` : ''}<span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
+    }).join('') || '<div class="empty">No item found</div>';
+    bar();
   };
   $('#isearch').oninput = draw; draw();
+  if (mode) {
+    $('#irows').addEventListener('change', (e) => { if (!e.target.classList.contains('isel')) return; const id = Number(e.target.dataset.sel); if (e.target.checked) ITEM_SEL.add(id); else ITEM_SEL.delete(id); bar(); });
+    $('#iall').onchange = () => { for (const i of hit) { if ($('#iall').checked) ITEM_SEL.add(i.id); else ITEM_SEL.delete(i.id); } draw(); };
+    $('#ibulk').onclick = () => bulkItems(mode).catch((err) => toast(err.message));
+  }
   await itemDetail();
 };
+// One action on every ticked item, a few at a time, with a running count.
+async function bulkItems(mode) {
+  const picked = ITEMS.filter((i) => ITEM_SEL.has(i.id)), n = picked.length;
+  if (!n) return;
+  const del = mode === 'del';
+  if (!(await ask(del ? `Delete ${n} item${n === 1 ? '' : 's'}?` : `Mark ${n} item${n === 1 ? '' : 's'} inactive?`,
+    del ? 'They move to the Recycle Bin and disappear from every item list. Old bills still show their names. You can restore them later.'
+      : 'They will be hidden from bills and from the Active list. Their old entries and stock stay as they are.',
+    del ? `YES, DELETE ${n}` : `YES, MARK ${n} INACTIVE`, del ? 'danger' : 'pri'))) return;
+  let done = 0; const failed = [];
+  const one = async (i) => {
+    try {
+      if (del) await rpc('delete_item', { p_id: i.id });
+      else await rpc('save_item', { p: { id: i.id, name: i.name, code: i.code, category_id: i.category_id, unit: i.unit, hsn: i.hsn, tax_rate: i.tax_rate, min_stock: i.min_stock,
+        location: i.location, description: i.description, sale_price: i.sale_price, purchase_price: i.purchase_price, mrp: i.mrp, active: false } });
+    } catch (err) { failed.push(`${i.name}: ${err.message}`); }
+    done++; $('#ibulk').textContent = `${done} / ${n}…`;
+  };
+  $('#ibulk').disabled = true;
+  const queue = picked.slice();
+  await Promise.all(Array.from({ length: 4 }, async () => { while (queue.length) await one(queue.shift()); }));
+  ITEM_SEL = new Set(); SEL.item = null;
+  await refresh();
+  if (failed.length) dialog(`${n - failed.length} done, ${failed.length} not done`, `<p style="margin-top:0">These could not be ${del ? 'deleted' : 'changed'}:</p><ul>${failed.slice(0, 50).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`, null);
+  else toast(del ? `${n} item${n === 1 ? '' : 's'} moved to Recycle Bin` : `${n} item${n === 1 ? '' : 's'} marked inactive`);
+}
 async function itemDetail() {
   const i = ITEMS.find((x) => x.id === SEL.item);
   if (!i) { $('#idet').innerHTML = '<div class="panel"><div class="empty">Add your first item</div></div>'; return; }
@@ -794,6 +841,7 @@ document.addEventListener('click', async (e) => {
     else if (d.more) moreMenu();
     else if (d.txn) await txnView(Number(d.txn));
     else if (d.party) { SEL.party = Number(d.party); document.querySelectorAll('#prows .row').forEach((r) => r.classList.toggle('on', r === el)); await partyDetail(); }
+    else if (d.item && e.target.classList.contains('isel')) { /* tick box: handled by the list itself */ }
     else if (d.item) { SEL.item = Number(d.item); document.querySelectorAll('#irows .row').forEach((r) => r.classList.toggle('on', r === el)); await itemDetail(); }
     else if (d.partyNew) partyForm();
     else if (d.partyEdit) partyForm(PARTIES.find((p) => p.id === Number(d.partyEdit)));
@@ -802,7 +850,7 @@ document.addEventListener('click', async (e) => {
     else if (d.adjust) adjustForm(Number(d.adjust));
     else if (d.rep) { REP.tab = d.rep; route(); }
     else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); if (!(await ask(u.active ? 'Switch this account off?' : 'Switch this account on?', u.active ? `${u.name} will not be able to sign in.` : `${u.name} will be able to sign in with the rights you have ticked.`, u.active ? 'YES, SWITCH OFF' : 'YES, SWITCH ON'))) return; await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
-    else if (d.itemshow) { ITEM_SHOW = d.itemshow; await route(); }
+    else if (d.itemshow) { ITEM_SHOW = d.itemshow; ITEM_SEL = new Set(); await route(); }
     else if (d.itemToggle) {
       const i = ITEMS.find((x) => x.id === Number(d.itemToggle));
       if (await ask(i.active ? 'Mark this item inactive?' : 'Mark this item active?', i.active ? `"${i.name}" will be hidden from bills and from the Active list. Its old entries and stock stay as they are.` : `"${i.name}" will show in bills and in the Active list again.`, i.active ? 'YES, MARK INACTIVE' : 'YES, MARK ACTIVE')) {

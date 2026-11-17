@@ -124,6 +124,12 @@ tbody tr.click:hover{background:#e3dcfb}
 .seg{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);background:#f7f8fc}
 .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 4px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--slate)}
 .seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.selbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);background:#fff}
+.selbar label.c{padding:0;font-weight:700;font-size:13px;cursor:pointer}
+.selbar input,.row .isel{width:17px;height:17px;accent-color:var(--acc);cursor:pointer;flex:none}
+.row .isel{margin:2px 10px 0 0}
+.row .n{flex:1}
+.row.on .isel{accent-color:#fff}
 .row.off .n{color:var(--mute)}
 .row em{font-style:normal;font-size:11px;font-weight:700;background:#e2e8f0;color:#475569;border-radius:8px;padding:1px 7px;margin-left:6px}
 .row.on em{background:rgba(255,255,255,.25);color:#fff}
@@ -306,7 +312,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=50"></script>
-<script src="app.js?v=50"></script>
+<script src="config.js?v=51"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>
