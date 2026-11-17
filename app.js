@@ -459,7 +459,7 @@ async function txnView(id) {
       ${sf('Date', fdate(t.date))}${sf('Party', esc(t.party || 'Cash'))}${t.account ? sf('Account', acctTag(t.account)) : ''}
       ${lines.length ? sf('Items', lines.length) + sf('Total quantity', qty(totalQty), 'hi') : ''}
       ${sf('Total', money(t.total), 'key')}${sf('Paid', money(t.paid))}${isOwn({ name: t.party }) ? '' : sf('Balance', money(t.balance))}
-      ${sf(t.edited_at ? 'Last edited' : 'Entered by', esc(t.edited_at ? `${t.edited_by_name || ''} · ${when(t.edited_at)}` : t.created_by_name || 'Imported'), 'sm')}
+      ${t.edited_at ? sf('Last edited', esc(`${t.edited_by_name || ''} · ${when(t.edited_at)}`), 'sm') : t.created_by_name ? sf('Entered by', esc(t.created_by_name), 'sm') : ''}
     </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
