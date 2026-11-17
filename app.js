@@ -123,11 +123,14 @@ const refresh = async () => { await loadMaster(); await route(); };
 $('#refreshBtn').onclick = async () => { try { await refresh(); toast('Refreshed'); } catch (err) { toast(err.message); } };
 
 // ---------- shared pieces ----------
-function txnTable(rows, { party = true } = {}) {
-  if (!rows.length) return '<div class="empty">No transactions yet</div>';
-  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}<th class="r">TOTAL</th><th class="r">BALANCE</th></tr></thead><tbody>${
-    rows.map((t) => `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td><td>${esc(t.ref_no || '')}</td>${
-      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}<td class="r">${money(t.total)}</td><td class="r">${money(t.balance)}</td></tr>`).join('')}</tbody></table></div>`;
+const payStatus = (t) => (t.total == null ? '' : t.type === 'payment_in' || t.type === 'payment_out' ? '' : (t.balance || 0) <= 0.005 ? 'Paid' : (t.paid || 0) <= 0.005 ? 'Unpaid' : 'Partial');
+function txnTable(rows, { party = true, pay = false } = {}) {
+  if (!rows.length) return '<div class="empty">No transactions found</div>';
+  const st = { Paid: 'payment_in', Unpaid: 'sale', Partial: 'sale_return' };
+  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
+    rows.map((t) => { const ps = payStatus(t); return `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td><td>${esc(t.ref_no || '')}</td>${
+      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
+      pay ? `<td>${ps ? `<span class="tag ${st[ps]}">${ps}</span>` : ''}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
 }
 function csv(name, head, rows) {
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -294,36 +297,75 @@ function adjustForm(id) {
 }
 
 // ---------- transactions ----------
-let FILTER = { type: '', from: '', to: '' };
+let FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', q: '' };
+const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'],
+  ['fy', 'This financial year'], ['lastfy', 'Last financial year'], ['all', 'All time'], ['custom', 'Custom dates']];
+function periodDates(p) {
+  const iso = (d) => d.toLocaleDateString('en-CA'), n = new Date(), y = n.getFullYear(), m = n.getMonth();
+  const fy = m >= 3 ? y : y - 1;   // financial year starts 1 April
+  if (p === 'today') return [iso(n), iso(n)];
+  if (p === 'week') { const d = new Date(n); d.setDate(n.getDate() - ((n.getDay() + 6) % 7)); return [iso(d), iso(n)]; }
+  if (p === 'lastmonth') return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
+  if (p === 'quarter') return [iso(new Date(y, Math.floor(m / 3) * 3, 1)), iso(n)];
+  if (p === 'fy') return [iso(new Date(fy, 3, 1)), iso(new Date(fy + 1, 2, 31))];
+  if (p === 'lastfy') return [iso(new Date(fy - 1, 3, 1)), iso(new Date(fy, 2, 31))];
+  if (p === 'all') return ['2000-01-01', '2099-12-31'];
+  return [iso(new Date(y, m, 1)), iso(n)];
+}
 // One list screen, used for "all entries" and for the Sale / Purchase / Credit Note menu tabs.
 async function entriesView(fixed, title) {
   $('#title').textContent = title;
-  if (!FILTER.from) FILTER = { type: '', from: monthStart(), to: today() };
+  if (FILTER.period !== 'custom' || !FILTER.from) [FILTER.from, FILTER.to] = periodDates(FILTER.period);
   const type = fixed || FILTER.type;
-  const rows = await all('v_transactions', (q) => {
+  const fetched = await all('v_transactions', (q) => {
     q = q.gte('date', FILTER.from).lte('date', FILTER.to).order('date', { ascending: false }).order('id', { ascending: false });
-    return type ? q.eq('type', type) : q;
+    if (type) q = q.eq('type', type);
+    if (FILTER.party === 'cash') q = q.is('party_id', null); else if (FILTER.party) q = q.eq('party_id', Number(FILTER.party));
+    return q;
   });
-  const sum = (t, f = 'total') => rows.filter((r) => r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
-  const tiles = [];
-  if (fixed && sees(fixed)) {
-    tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], [' 💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green'],
-      ['⏳', 'Balance', money(sum(fixed, 'balance')), 'gold']);
-  } else if (!fixed) {
-    if (can('sale_price')) tiles.push(['🧾', 'Sale', money(sum('sale')), 'purple'], ['↩️', 'Credit notes', money(sum('sale_return')), 'gold']);
-    if (can('purchase_price')) tiles.push(['🛒', 'Purchase', money(sum('purchase')), 'blue']);
-  }
+  const amounts = fixed ? sees(fixed) : (can('sale_price') || can('purchase_price'));
   const addBtn = fixed && can('entries') ? `<button class="btn sm ${fixed === 'purchase' ? 'buy' : fixed === 'sale_return' ? 'gold' : 'pri'}" data-new="${fixed}">+ ADD ${title.toUpperCase()}</button>` : '';
-  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${rows.length} ${fixed ? title.toLowerCase() + (rows.length === 1 ? ' entry' : ' entries') : 'entries'}</h2><div class="filters">
-    ${fixed ? '' : `<select id="ft"><option value="">All types</option>${Object.entries(TYPE).map(([k, v]) => `<option value="${k}" ${FILTER.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`}
-    <input type="date" id="ff" value="${FILTER.from}"><span>to</span><input type="date" id="fto" value="${FILTER.to}">
-    <button class="btn sm" id="fcsv">EXCEL (CSV)</button>${addBtn}</div></div>
-    ${tiles.length ? `<div class="stats">${tiles.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic.trim()}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div>` : ''}${txnTable(rows)}</div>`;
-  const go = () => { FILTER = { type: fixed ? FILTER.type : $('#ft').value, from: $('#ff').value || monthStart(), to: $('#fto').value || today() }; route(); };
-  if ($('#ft')) $('#ft').onchange = go;
-  $('#ff').onchange = go; $('#fto').onchange = go;
-  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Total', 'Paid', 'Balance'],
-    rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.total, t.paid, t.balance]));
+  $('#view').innerHTML = `<div class="panel"><div class="hd"><h2 id="ecount"></h2>${addBtn}</div>
+    <div class="fbar">
+      <label class="f">Period<select id="fp">${PERIODS.map(([k, v]) => `<option value="${k}" ${FILTER.period === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="f">From<input type="date" id="ff" value="${FILTER.period === 'all' ? '' : FILTER.from}"></label>
+      <label class="f">To<input type="date" id="fto" value="${FILTER.period === 'all' ? '' : FILTER.to}"></label>
+      ${fixed ? '' : `<label class="f">Type<select id="ft"><option value="">All types</option>${Object.entries(TYPE).map(([k, v]) => `<option value="${k}" ${FILTER.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`}
+      <label class="f">Party<select id="fparty"><option value="">All parties</option><option value="cash" ${FILTER.party === 'cash' ? 'selected' : ''}>Cash (no party)</option>${
+        PARTIES.map((p) => `<option value="${p.id}" ${String(p.id) === FILTER.party ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+      ${amounts ? `<label class="f">Payment status<select id="fs">${['', 'Paid', 'Unpaid', 'Partial'].map((v) => `<option value="${v}" ${FILTER.status === v ? 'selected' : ''}>${v || 'All'}</option>`).join('')}</select></label>` : ''}
+      <label class="f grow">Search<input id="fq" placeholder="Bill no., party, amount or note" value="${esc(FILTER.q)}"></label>
+      <button class="btn sm lite" id="fclear">CLEAR</button><button class="btn sm" id="fcsv">EXCEL (CSV)</button>
+    </div><div id="etiles"></div><div id="etable"></div></div>`;
+  let rows = [];
+  const draw = () => {
+    const q = FILTER.q.trim().toLowerCase();
+    rows = fetched.filter((t) => (!FILTER.status || payStatus(t) === FILTER.status)
+      && (!q || [t.ref_no, t.party || 'cash', t.description, t.total, t.payment_type].some((v) => String(v ?? '').toLowerCase().includes(q))));
+    const sum = (t, f = 'total') => rows.filter((r) => !t || r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
+    const tiles = [];
+    if (fixed && amounts) {
+      tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], ['💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green'],
+        ['⏳', 'Unpaid balance', money(sum(fixed, 'balance')), 'gold']);
+    } else if (!fixed) {
+      if (can('sale_price')) tiles.push(['🧾', 'Sale', money(sum('sale')), 'purple'], ['↩️', 'Credit notes', money(sum('sale_return')), 'gold']);
+      if (can('purchase_price')) tiles.push(['🛒', 'Purchase', money(sum('purchase')), 'blue']);
+    }
+    $('#ecount').textContent = `${rows.length} ${fixed ? title.toLowerCase() + (rows.length === 1 ? ' entry' : ' entries') : 'entries'}`;
+    $('#etiles').innerHTML = tiles.length ? `<div class="stats">${tiles.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div>` : '';
+    $('#etable').innerHTML = txnTable(rows, { pay: amounts });
+  };
+  draw();
+  $('#fp').onchange = () => { FILTER.period = $('#fp').value; if (FILTER.period !== 'custom') route(); };
+  const dates = () => { FILTER.period = 'custom'; FILTER.from = $('#ff').value || FILTER.from; FILTER.to = $('#fto').value || FILTER.to; route(); };
+  $('#ff').onchange = dates; $('#fto').onchange = dates;
+  if ($('#ft')) $('#ft').onchange = () => { FILTER.type = $('#ft').value; route(); };
+  $('#fparty').onchange = () => { FILTER.party = $('#fparty').value; route(); };
+  if ($('#fs')) $('#fs').onchange = () => { FILTER.status = $('#fs').value; draw(); };
+  $('#fq').oninput = () => { FILTER.q = $('#fq').value; draw(); };
+  $('#fclear').onclick = () => { FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', q: '' }; route(); };
+  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Payment type', 'Total', 'Paid', 'Balance', 'Status'],
+    rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.payment_type, t.total, t.paid, t.balance, payStatus(t)]));
 }
 VIEWS.entries = () => entriesView('', 'All Transactions');
 VIEWS.sale = () => entriesView('sale', 'Sale');
