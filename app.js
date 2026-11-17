@@ -71,11 +71,11 @@ $('#loginForm').onsubmit = async (e) => {
   const email = $('#lemail').value.trim(), password = $('#lpass').value;
   $('#lgo').disabled = true; $('#lmsg').textContent = 'Please wait…';
   const res = signup
-    ? await sb.auth.signUp({ email, password, options: { data: { name: $('#lname').value.trim() } } })
+    ? await sb.auth.signUp({ email, password, options: { data: { name: $('#lname').value.trim() }, emailRedirectTo: location.origin + location.pathname } })
     : await sb.auth.signInWithPassword({ email, password });
   $('#lgo').disabled = false;
   if (res.error) { $('#lmsg').textContent = res.error.message; return; }
-  if (!res.data.session) { $('#lmsg').textContent = 'Account created. Open the link sent to your email, then sign in.'; return; }
+  if (!res.data.session) { $('#lmsg').textContent = 'Account created. Open the link sent to your email, then come back here and sign in.'; return; }
   boot();
 };
 $('#logout').onclick = async () => { await sb.auth.signOut(); ME = null; showLogin(); };
