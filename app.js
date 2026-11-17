@@ -536,7 +536,11 @@ function billForm(type, edit = null) {
   const openPick = (input) => {
     pickFor = input;
     const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    pickList = actives.filter((i) => { const hay = (i.name + ' ' + (i.code || '')).toLowerCase(); return words.every((w) => hay.includes(w)); }).slice(0, 60);
+    const first = words[0] || '';
+    // every match is listed; names that start with what was typed come first, then word starts, then the rest
+    const rank = (i) => { const n = i.name.toLowerCase(); return !first ? 2 : n.startsWith(first) ? 0 : n.split(/[^a-z0-9]+/).some((part) => part.startsWith(first)) ? 1 : 2; };
+    pickList = actives.filter((i) => { const hay = (i.name + ' ' + (i.code || '')).toLowerCase(); return words.every((w) => hay.includes(w)); })
+      .map((i) => [rank(i), i]).sort((x, y) => x[0] - y[0] || x[1].name.localeCompare(y[1].name)).map((x) => x[1]);
     pickAt = 0;
     const r = input.getBoundingClientRect(), w = Math.min(Math.max(r.width, 620), window.innerWidth - 16), h = 300;
     pick.style.width = w + 'px';
