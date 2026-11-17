@@ -259,12 +259,17 @@ async function partyDetail() {
   if (!p) { $('#pdet').innerHTML = '<div class="panel"><div class="empty">Add your first party</div></div>'; return; }
   const rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false }));
   const pay = can('entries') && can('party_balance');
+  // totals of each kind of entry for this party (amount shown only if this user may see it)
+  const KINDS = [['sale', 'Sale bills', '🧾', 'purple'], ['sale_return', 'Credit notes', '↩️', 'gold'], ['purchase', 'Purchase bills', '🛒', 'blue'],
+    ['purchase_return', 'Debit notes', '↪️', 'gold'], ['payment_in', 'Payment-In', '⬇️', 'green'], ['payment_out', 'Payment-Out', '⬆️', 'red']];
+  const totals = KINDS.map(([type, label, ic, c]) => { const r = rows.filter((t) => t.type === type); return { label, ic, c, n: r.length, amt: r.some((t) => t.total != null) ? r.reduce((s, t) => s + (t.total || 0), 0) : null }; }).filter((k) => k.n);
   $('#pdet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(p.name)}</h2><div class="chips">${
     [isOwn(p) && 'Own account · no balance or unpaid shown', p.phone && `📞 ${esc(p.phone)}`, p.gstin && `GSTIN ${esc(p.gstin)}`, p.state && `📍 ${esc(p.state)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')}</div></div>${
     pay ? `<button class="btn sm" data-new="payment_in" data-for="${p.id}">+ PAYMENT-IN</button><button class="btn sm" data-new="payment_out" data-for="${p.id}">+ PAYMENT-OUT</button>` : ''}${
     can('manage_parties') ? `<button class="btn sm" data-party-edit="${p.id}">EDIT</button>` : ''}</div>
     <div class="stats">${p.balance == null || isOwn(p) ? '' : `<div class="stat ${p.balance < -0.005 ? 'red' : 'green'}"><i>💰</i><div><span>${balWord(p.balance)}</span><b>${money(Math.abs(p.balance))}</b></div></div>`}
-    <div class="stat blue"><i>🧾</i><div><span>Transactions</span><b>${rows.length}</b></div></div>${
+    ${totals.map((k) => `<div class="stat ${k.c}"><i>${k.ic}</i><div><span>${k.label} (${k.n})</span><b>${k.amt == null ? k.n : money(k.amt)}</b></div></div>`).join('')}
+    <div class="stat blue"><i>📋</i><div><span>Transactions</span><b>${rows.length}</b></div></div>${
     rows[0] ? `<div class="stat purple"><i>📅</i><div><span>Last entry</span><b>${fdate(rows[0].date)}</b></div></div>` : ''}${
     p.address ? `<div class="stat gold"><i>🏠</i><div><span>Address</span><b class="wrap">${esc(p.address)}</b></div></div>` : ''}</div></div>
     <div class="panel"><div class="hd"><h2>Transactions (${rows.length})</h2></div>${txnTable(rows, { party: false })}</div>`;
