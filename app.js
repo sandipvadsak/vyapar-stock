@@ -461,13 +461,13 @@ function paymentForm(type, partyId, edit = null) {
 }
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
-  const line = () => `<tr><td><input class="li" list="itemlist" placeholder="Type item name"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
+  const line = () => `<tr><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} #${edit.t.ref_no || ''}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<select id="f_acct"><option value="">No account</option>${[...new Set([...ACCOUNTS, edit?.t.account].filter(Boolean))].map((a) => `<option ${edit?.t.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__new">+ New account…</option></select>
       <input id="f_acct_new" class="hide" placeholder="Type the new account name" style="text-transform:uppercase;margin-top:6px"></label>` : ''}</div>
-    <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
+    <div id="ipick" class="hide"></div>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
     ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><div class="btitle">CEP + DCEP bundle</div>
@@ -520,6 +520,54 @@ function billForm(type, edit = null) {
   };
   $('#lbody').onclick = (e) => { if (e.target.dataset.rm) { e.target.closest('tr').remove(); calc(); } };
   $('#ladd').onclick = () => $('#lbody').insertAdjacentHTML('beforeend', line());
+  // Item picker: a list under the box with price and stock, like a billing screen.
+  const pick = $('#ipick'), actives = ITEMS.filter((i) => i.active);
+  const showSale = can('sale_price'), showBuy = can('purchase_price');
+  let pickFor = null, pickList = [], pickAt = 0;
+  const closePick = () => { pick.classList.add('hide'); pickFor = null; };
+  const drawPick = () => {
+    pick.innerHTML = `<div class="ph"><span>ITEM</span>${showSale ? '<span class="r">SALE PRICE</span>' : ''}${showBuy ? '<span class="r">PURCHASE PRICE</span>' : ''}<span class="r">STOCK</span></div>`
+      + (pickList.length ? pickList.map((i, n) => `<div class="pr ${n === pickAt ? 'on' : ''}" data-n="${n}"><span class="pn">${esc(LABEL.get(i.id))}${i.code ? ` <small>${esc(i.code)}</small>` : ''}</span>${
+        showSale ? `<span class="r">${i.sale_price == null ? '' : qty(i.sale_price)}</span>` : ''}${showBuy ? `<span class="r">${i.purchase_price == null ? '' : qty(i.purchase_price)}</span>` : ''}<span class="r ${i.stock <= 0 ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`).join('')
+        : '<div class="pe">No item found</div>');
+    pick.style.setProperty('--pc', 1 + (showSale ? 1 : 0) + (showBuy ? 1 : 0));
+    const on = pick.querySelector('.pr.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+  };
+  const openPick = (input) => {
+    pickFor = input;
+    const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    pickList = actives.filter((i) => { const hay = (i.name + ' ' + (i.code || '')).toLowerCase(); return words.every((w) => hay.includes(w)); }).slice(0, 60);
+    pickAt = 0;
+    const r = input.getBoundingClientRect(), w = Math.min(Math.max(r.width, 620), window.innerWidth - 16), h = 300;
+    pick.style.width = w + 'px';
+    pick.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    if (window.innerHeight - r.bottom < h + 12 && r.top > h) { pick.style.top = ''; pick.style.bottom = (window.innerHeight - r.top + 4) + 'px'; }
+    else { pick.style.bottom = ''; pick.style.top = (r.bottom + 4) + 'px'; }
+    pick.classList.remove('hide'); drawPick();
+  };
+  const choose = (it) => {
+    const input = pickFor; if (!input || !it) return;
+    const tr = input.closest('tr');
+    input.value = LABEL.get(it.id);
+    if (see) $('.lp', tr).value = (sale ? it.sale_price : it.purchase_price) ?? '';
+    closePick();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    closePick();
+    $('.lq', tr).focus();
+  };
+  $('#lbody').addEventListener('focusin', (e) => { if (e.target.classList.contains('li')) openPick(e.target); });
+  $('#lbody').addEventListener('input', (e) => { if (e.target.classList.contains('li') && e.isTrusted !== false && document.activeElement === e.target) openPick(e.target); });
+  $('#lbody').addEventListener('focusout', (e) => { if (e.target.classList.contains('li')) setTimeout(() => { if (pickFor === e.target && document.activeElement !== e.target) closePick(); }, 150); });
+  $('#lbody').addEventListener('keydown', (e) => {
+    if (!e.target.classList.contains('li')) return;
+    const open = !pick.classList.contains('hide');
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openPick(e.target); else { pickAt = Math.min(pickAt + 1, pickList.length - 1); drawPick(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (open) { pickAt = Math.max(pickAt - 1, 0); drawPick(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); if (open && pickList[pickAt]) choose(pickList[pickAt]); }
+    else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); closePick(); }
+  });
+  pick.onmousedown = (e) => { e.preventDefault(); const row = e.target.closest('.pr'); if (row) choose(pickList[Number(row.dataset.n)]); };
+  $('#dbody').addEventListener('scroll', closePick, { passive: true });
   const fill = (it, q) => {
     let tr = [...$('#lbody').children].find((r) => !$('.li', r).value.trim());
     if (!tr) { $('#lbody').insertAdjacentHTML('beforeend', line()); tr = $('#lbody').lastElementChild; }
