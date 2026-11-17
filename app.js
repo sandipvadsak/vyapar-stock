@@ -21,7 +21,7 @@ const PERMS = [
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
-let HAS_BIN = false, HAS_EDIT = false;
+let HAS_BIN = false, HAS_EDIT = false, HAS_ACCT = false, ACCOUNTS = [];
 const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
@@ -50,6 +50,8 @@ async function loadMaster() {
   ]);
   HAS_BIN = ME?.role === 'owner' && !(await sb.from('v_recycle_bin').select('id').limit(1)).error;
   HAS_EDIT = !(await sb.from('v_transactions').select('edited_at').limit(1)).error;
+  HAS_ACCT = !(await sb.from('v_transactions').select('account').limit(1)).error;
+  ACCOUNTS = HAS_ACCT ? ((await sb.rpc('list_accounts')).data || []) : [];
   const seen = new Map();
   for (const i of ITEMS) seen.set(i.name, (seen.get(i.name) || 0) + 1);
   LABEL = new Map(); BYLABEL = new Map();
@@ -131,12 +133,12 @@ $('#refreshBtn').onclick = async () => { try { await refresh(); toast('Refreshed
 
 // ---------- shared pieces ----------
 const payStatus = (t) => (t.total == null ? '' : t.type === 'payment_in' || t.type === 'payment_out' ? '' : (t.balance || 0) <= 0.005 ? 'Paid' : (t.paid || 0) <= 0.005 ? 'Unpaid' : 'Partial');
-function txnTable(rows, { party = true, pay = false } = {}) {
+function txnTable(rows, { party = true, pay = false, acct = false } = {}) {
   if (!rows.length) return '<div class="empty">No transactions found</div>';
   const st = { Paid: 'payment_in', Unpaid: 'sale', Partial: 'sale_return' };
-  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
+  return `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th>NO.</th>${party ? '<th>PARTY</th>' : ''}${acct ? '<th>ACCOUNT</th>' : ''}${pay ? '<th>PAYMENT TYPE</th>' : ''}<th class="r">TOTAL</th>${pay ? '<th class="r">PAID</th>' : ''}<th class="r">BALANCE</th>${pay ? '<th>STATUS</th>' : ''}</tr></thead><tbody>${
     rows.map((t) => { const ps = payStatus(t); return `<tr class="click" data-txn="${t.id}"><td>${fdate(t.date)}</td><td><span class="tag ${t.type}">${TYPE[t.type]}</span></td><td>${esc(t.ref_no || '')}</td>${
-      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
+      party ? `<td>${esc(t.party || 'Cash')}</td>` : ''}${acct ? `<td>${t.account ? `<span class="tag acct">${esc(t.account)}</span>` : ''}</td>` : ''}${pay ? `<td>${esc(t.payment_type || '')}</td>` : ''}<td class="r">${money(t.total)}</td>${pay ? `<td class="r">${money(t.paid)}</td>` : ''}<td class="r">${money(t.balance)}</td>${
       pay ? `<td>${ps ? `<span class="tag ${st[ps]}">${ps}</span>` : ''}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
 }
 function csv(name, head, rows) {
@@ -343,7 +345,7 @@ function adjustForm(id, a = null) {
 }
 
 // ---------- transactions ----------
-let FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', q: '' };
+let FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', account: '', q: '' };
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'],
   ['fy', 'This financial year'], ['lastfy', 'Last financial year'], ['all', 'All time'], ['custom', 'Custom dates']];
 function periodDates(p) {
@@ -370,6 +372,7 @@ async function entriesView(fixed, title) {
     return q;
   });
   const amounts = fixed ? sees(fixed) : (can('sale_price') || can('purchase_price'));
+  const acct = HAS_ACCT && (!fixed || fixed === 'sale' || fixed === 'sale_return');
   const addBtn = fixed && can('entries') ? `<button class="btn sm ${fixed === 'purchase' ? 'buy' : fixed === 'sale_return' ? 'gold' : 'pri'}" data-new="${fixed}">+ ADD ${title.toUpperCase()}</button>` : '';
   $('#view').innerHTML = `<div class="panel"><div class="hd"><h2 id="ecount"></h2>${addBtn}</div>
     <div class="fbar">
@@ -380,14 +383,22 @@ async function entriesView(fixed, title) {
       <label class="f">Party<select id="fparty"><option value="">All parties</option><option value="cash" ${FILTER.party === 'cash' ? 'selected' : ''}>Cash (no party)</option>${
         PARTIES.map((p) => `<option value="${p.id}" ${String(p.id) === FILTER.party ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
       ${amounts ? `<label class="f">Payment status<select id="fs">${['', 'Paid', 'Unpaid', 'Partial'].map((v) => `<option value="${v}" ${FILTER.status === v ? 'selected' : ''}>${v || 'All'}</option>`).join('')}</select></label>` : ''}
-      <label class="f grow">Search<input id="fq" placeholder="Bill no., party, amount or note" value="${esc(FILTER.q)}"></label>
+      ${acct ? `<label class="f">Account<select id="fa"><option value="">All accounts</option><option value="-" ${FILTER.account === '-' ? 'selected' : ''}>No account</option>${ACCOUNTS.map((a) => `<option ${FILTER.account === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label>` : ''}
+      <label class="f grow">Search<input id="fq" placeholder="Bill no., party, account, amount or note" value="${esc(FILTER.q)}"></label>
       <button class="btn sm lite" id="fclear">CLEAR</button><button class="btn sm" id="fcsv">EXCEL (CSV)</button>
-    </div><div id="etiles"></div><div id="etable"></div></div>`;
+    </div><div id="etiles"></div><div id="eacct"></div><div id="etable"></div></div>`;
   let rows = [];
   const draw = () => {
     const q = FILTER.q.trim().toLowerCase();
-    rows = fetched.filter((t) => (!FILTER.status || payStatus(t) === FILTER.status)
-      && (!q || [t.ref_no, t.party || 'cash', t.description, t.total, t.payment_type].some((v) => String(v ?? '').toLowerCase().includes(q))));
+    const base = fetched.filter((t) => (!FILTER.status || payStatus(t) === FILTER.status)
+      && (!q || [t.ref_no, t.party || 'cash', t.description, t.total, t.payment_type, t.account].some((v) => String(v ?? '').toLowerCase().includes(q))));
+    const fa = acct ? FILTER.account : '';
+    rows = base.filter((t) => !fa || (fa === '-' ? !t.account : t.account === fa));
+    if (acct) {   // one chip per account for what is on screen; click to filter
+      const by = new Map();
+      for (const t of base) { if (!t.account) continue; const o = by.get(t.account) || { n: 0, total: 0 }; o.n++; o.total += (t.type === 'sale_return' ? -1 : 1) * (t.total || 0); by.set(t.account, o); }
+      $('#eacct').innerHTML = by.size ? `<div class="achips"><b>By account</b>${[...by].sort().map(([a, o]) => `<button type="button" class="${fa === a ? 'on' : ''}" data-acct="${esc(a)}">${esc(a)}<small>${o.n} ${o.n === 1 ? 'bill' : 'bills'}${amounts ? ' · ' + money(Math.round(o.total)) : ''}</small></button>`).join('')}${fa ? '<button type="button" data-acct="">Show all</button>' : ''}</div>` : '';
+    }
     const sum = (t, f = 'total') => rows.filter((r) => !t || r.type === t).reduce((s, r) => s + (r[f] || 0), 0);
     const tiles = [];
     if (fixed && amounts) {
@@ -399,7 +410,7 @@ async function entriesView(fixed, title) {
     }
     $('#ecount').textContent = `${rows.length} ${fixed ? title.toLowerCase() + (rows.length === 1 ? ' entry' : ' entries') : 'entries'}`;
     $('#etiles').innerHTML = tiles.length ? `<div class="stats">${tiles.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div>` : '';
-    $('#etable').innerHTML = txnTable(rows, { pay: amounts });
+    $('#etable').innerHTML = txnTable(rows, { pay: amounts, acct });
   };
   draw();
   $('#fp').onchange = () => { FILTER.period = $('#fp').value; if (FILTER.period !== 'custom') route(); };
@@ -408,10 +419,12 @@ async function entriesView(fixed, title) {
   if ($('#ft')) $('#ft').onchange = () => { FILTER.type = $('#ft').value; route(); };
   $('#fparty').onchange = () => { FILTER.party = $('#fparty').value; route(); };
   if ($('#fs')) $('#fs').onchange = () => { FILTER.status = $('#fs').value; draw(); };
+  if ($('#fa')) $('#fa').onchange = () => { FILTER.account = $('#fa').value; draw(); };
+  $('#eacct').onclick = (e) => { const b = e.target.closest('[data-acct]'); if (!b) return; FILTER.account = b.dataset.acct; if ($('#fa')) $('#fa').value = FILTER.account; draw(); };
   $('#fq').oninput = () => { FILTER.q = $('#fq').value; draw(); };
-  $('#fclear').onclick = () => { FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', q: '' }; route(); };
-  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Payment type', 'Total', 'Paid', 'Balance', 'Status'],
-    rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.payment_type, t.total, t.paid, t.balance, payStatus(t)]));
+  $('#fclear').onclick = () => { FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', account: '', q: '' }; route(); };
+  $('#fcsv').onclick = () => csv(fixed || 'transactions', ['Date', 'Type', 'No', 'Party', 'Account', 'Payment type', 'Total', 'Paid', 'Balance', 'Status'],
+    rows.map((t) => [fdate(t.date), TYPE[t.type], t.ref_no, t.party || 'Cash', t.account || '', t.payment_type, t.total, t.paid, t.balance, payStatus(t)]));
 }
 VIEWS.entries = () => entriesView('', 'All Transactions');
 VIEWS.sale = () => entriesView('sale', 'Sale');
@@ -428,7 +441,7 @@ async function txnView(id) {
   const when = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   dialog(`${TYPE[t.type]} ${t.ref_no ? '#' + t.ref_no : ''}`, `<div class="facts" style="padding:0 0 12px"><div><span>Date</span><b>${fdate(t.date)}</b></div><div><span>Party</span><b>${esc(t.party || 'Cash')}</b></div>
     <div><span>Total</span><b>${money(t.total)}</b></div><div><span>Paid</span><b>${money(t.paid)}</b></div><div><span>Balance</span><b>${money(t.balance)}</b></div>
-    <div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
+    ${t.account ? `<div><span>Account</span><b><span class="tag acct">${esc(t.account)}</span></b></div>` : ''}<div><span>Entered by</span><b>${esc(t.created_by_name || 'Imported')}</b></div>${t.edited_at ? `<div><span>Last edited</span><b>${esc(t.edited_by_name || '')} · ${when(t.edited_at)}</b></div>` : ''}</div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<div class="tw"><table><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table></div>` : ''}`,
   null, { extra: (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
@@ -447,7 +460,7 @@ function billForm(type, edit = null) {
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} #${edit.t.ref_no || ''}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party<select id="f_party"><option value="">Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
-    ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}</div>
+    ${field('f_date', 'Date', edit ? edit.t.date : today(), 'type="date"')}${field('f_ref', edit ? 'Bill no.' : 'Bill no. (blank = next number)', edit ? edit.t.ref_no || '' : '')}${HAS_ACCT && sale ? `<label class="f">Account (where the goods go)<input id="f_acct" list="acctlist" placeholder="Choose or type" value="${esc(edit?.t.account || '')}" style="text-transform:uppercase"><datalist id="acctlist">${ACCOUNTS.map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>` : ''}</div>
     <datalist id="itemlist">${ITEMS.filter((i) => i.active).map((i) => `<option value="${esc(LABEL.get(i.id))}">`).join('')}</datalist>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
@@ -472,8 +485,8 @@ function billForm(type, edit = null) {
     }
     if (!lines.length) throw new Error('Add at least one item');
     const party = val('f_party');
-    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note') } });
-    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note') } });
+    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: val('f_acct') || '' } : {}) } });
+    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: val('f_acct') || '' } : {}) } });
   });
   const calc = () => {
     if (!see) return;
