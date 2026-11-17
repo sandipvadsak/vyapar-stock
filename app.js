@@ -472,10 +472,10 @@ function billForm(type, edit = null) {
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
     ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><div class="btitle">CEP + DCEP bundle</div>
       <div class="bgrp cep"><span class="btag">CEP</span><label class="f">CEP item<select id="b_i1"><option value="">Choose CEP</option>${BUNDLES.cep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label></div>
+        <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label><button class="btn sm pri" type="button" data-badd="1">+ ADD</button></div>
       <div class="bgrp dcep"><span class="btag">DCEP</span><label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label></div>
-      <button class="btn sm gold" type="button" id="b_add">+ ADD BOTH</button><span class="mute" id="b_msg"></span></div>` : ''}
+        <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label><button class="btn sm buy" type="button" data-badd="2">+ ADD</button></div>
+      <span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span>${edit ? '<label class="f">Round off<input id="f_round" type="number" step="any" style="width:110px"></label>' : ''}<label class="f" id="paidWrap">${edit ? 'Paid' : 'Paid now'}<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>
     <label class="f" style="margin-top:10px">Note<input id="f_note"></label>`,
@@ -578,18 +578,20 @@ function billForm(type, edit = null) {
     $('.li', tr).value = LABEL.get(it.id); $('.lq', tr).value = q;
     if (see) $('.lp', tr).value = (sale ? it.sale_price : it.purchase_price) ?? '';
   };
-  if ($('#b_add')) {
-    const item = (id) => ITEMS.find((i) => i.id === Number($(id).value));
-    $('#b_add').onclick = () => {
-      const c = item('#b_i1'), d = item('#b_i2'), q1 = Number($('#b_q1').value), q2 = Number($('#b_q2').value);
-      if (!c || !d) { $('#b_msg').textContent = 'Choose the CEP item and the DCEP item'; return; }
-      if (!(q1 > 0) || !(q2 > 0)) { $('#b_msg').textContent = 'Enter both quantities'; return; }
-      fill(c, q1); fill(d, q2);
-      $('#lbody').insertAdjacentHTML('beforeend', line());
-      $('#b_msg').textContent = `Added: ${c.name} × ${q1} and ${d.name} × ${q2}`;
-      for (const id of ['#b_i1', '#b_i2', '#b_q1', '#b_q2']) $(id).value = '';
+  if ($('#b_msg')) {
+    // CEP and DCEP are separate products: each box has its own ADD button.
+    const addOne = (n) => {
+      const it = ITEMS.find((i) => i.id === Number($('#b_i' + n).value)), q = Number($('#b_q' + n).value), word = n === 1 ? 'CEP' : 'DCEP';
+      if (!it) { $('#b_msg').textContent = `Choose the ${word} item`; return; }
+      if (!(q > 0)) { $('#b_msg').textContent = `Enter the ${word} quantity`; return; }
+      fill(it, q);
+      if ($('.li', $('#lbody').lastElementChild).value.trim()) $('#lbody').insertAdjacentHTML('beforeend', line());
+      $('#b_msg').textContent = `Added: ${it.name} × ${q}`;
+      $('#b_i' + n).value = ''; $('#b_q' + n).value = '';
       calc();
     };
+    document.querySelectorAll('[data-badd]').forEach((b) => { b.onclick = () => addOne(Number(b.dataset.badd)); });
+    for (const n of [1, 2]) $('#b_q' + n).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addOne(n); } });
   }
   if (edit) {
     $('#lbody').innerHTML = edit.lines.map(() => line()).join('') + line();
