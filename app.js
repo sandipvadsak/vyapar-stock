@@ -164,6 +164,48 @@ function csv(name, head, rows) {
   a.download = `${name}_${today()}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
 
+// ---------- WhatsApp message (one click) ----------
+// After an entry is saved for a party that has a mobile number, a ready message is shown;
+// one click opens WhatsApp with the number and text filled in. Nothing is sent without that click.
+let WA_AFTER = null;
+function waPhone(p) {
+  let d = String(p?.phone || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.length === 10) d = '91' + d;
+  return d.length === 12 && d.startsWith('91') ? d : null;
+}
+const waParty = (t) => PARTIES.find((p) => p.id === t.party_id);
+const waCan = (t) => { const p = waParty(t); return !!p && !isOwn(p) && !!waPhone(p) && t.type !== 'other' && t.total != null && can('party_balance'); };
+function waText(t, p, edited) {
+  const firm = CFG.firmName || CFG.appName, rs = (n) => '₹ ' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const L = [`Greetings from ${firm},`, edited ? 'Please find the updated details of your transaction.' : 'We are pleased to have you as a valuable customer. Please find the details of your transaction.', ''];
+  L.push(`*${TYPE[t.type]}*`, `Date: ${fdate(t.date)}`);
+  if (t.type === 'payment_in') L.push(`Received: ${rs(t.total)}`);
+  else if (t.type === 'payment_out') L.push(`Paid: ${rs(t.total)}`);
+  else {
+    const out = t.type === 'purchase' || t.type === 'sale_return';   // money goes from us to the party
+    L.push(`${t.type === 'sale' ? 'Invoice Amount' : t.type === 'purchase' ? 'Bill Amount' : 'Amount'}: ${rs(t.total)}`, `${out ? 'Paid' : 'Received'}: ${rs(t.paid)}`, `Balance: ${rs(t.balance)}`);
+  }
+  const b = Number(p.balance || 0);
+  L.push(Math.abs(b) < 0.005 ? 'Total Balance: ₹ 0' : b > 0 ? `Total Balance: ${rs(b)}` : `Total Balance: ${rs(-b)} (advance with us)`);
+  L.push('', 'Thanks for doing business with us.', '', 'Regards,', firm);
+  return L.join('\n');
+}
+async function waOffer(id, edited) {
+  const { data: t, error } = await sb.from('v_transactions').select('*').eq('id', id).single();
+  if (error || !t || !waCan(t)) return;
+  const p = waParty(t), phone = waPhone(p);
+  const link = (txt) => `https://wa.me/${phone}?text=${encodeURIComponent(txt)}`;
+  dialog('Send on WhatsApp?', `<p style="margin-top:0">To <b>${esc(p.name)}</b> · +${phone.slice(0, 2)} ${phone.slice(2)}</p>
+    <label class="f">Message (you can change it before sending)<textarea id="wa_txt" rows="13" style="font-size:14px;line-height:1.45"></textarea></label>
+    <p class="mute" style="margin-bottom:0">WhatsApp opens with this message ready. Press Send there.</p>`,
+  null, { extra: '<button class="btn lite" type="button" id="wa_no">NOT NOW</button><a class="btn wa" id="wa_go" target="_blank" rel="noopener">SEND ON WHATSAPP</a>' });
+  $('#wa_txt').value = waText(t, p, edited);
+  const set = () => { $('#wa_go').href = link($('#wa_txt').value); };
+  set(); $('#wa_txt').oninput = set;
+  $('#wa_no').onclick = () => $('#dlg').close();
+  $('#wa_go').onclick = () => setTimeout(() => $('#dlg').close(), 200);
+}
+
 // ---------- confirm popup ----------
 function ask(title, message, okText = 'YES', tone = 'pri') {
   return new Promise((resolve) => {
@@ -193,7 +235,7 @@ $('#dform').onsubmit = async (e) => {
   e.preventDefault();
   if (!onSave) return;
   $('#dsave').disabled = true; $('#derr').textContent = '';
-  try { await onSave(); $('#dlg').close(); await refresh(); toast('Saved'); }
+  try { WA_AFTER = null; await onSave(); $('#dlg').close(); await refresh(); toast('Saved'); if (WA_AFTER) { const w = WA_AFTER; WA_AFTER = null; waOffer(w.id, w.edited).catch((e) => toast(e.message)); } }
   catch (err) { $('#derr').textContent = err.message; }
   $('#dsave').disabled = false;
 };
@@ -473,7 +515,7 @@ async function txnView(id) {
     </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
-  null, { extra: (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
+  null, { extra: (waCan(t) ? `<button class="btn wa" type="button" data-wa="${id}">WHATSAPP</button>` : '') + (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
   sumFit();
 }
 function paymentForm(type, partyId, edit = null) {
@@ -482,7 +524,7 @@ function paymentForm(type, partyId, edit = null) {
     PARTIES.filter((p) => p.active || p.id === pid).map((p) => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
     ${field('f_date', 'Date', t ? t.date : today(), 'type="date"')}${field('f_amt', type === 'payment_in' ? 'Amount received *' : 'Amount paid *', t ? t.total : '', 'type="number" step="any" min="0" required')}
     <label class="f">Mode<select id="f_mode">${[...new Set(['Cash', 'Bank', 'UPI', 'Cheque', t?.payment_type].filter(Boolean))].map((m) => `<option ${t?.payment_type === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>${field('f_note', 'Note', t?.description || '')}</div>`,
-  () => rpc(t ? 'update_transaction' : 'save_transaction', { p: { id: t?.id, type, party_id: Number(val('f_party')), date: val('f_date'), amount: numv('f_amt'), payment_type: val('f_mode'), description: val('f_note') } }));
+  async () => { const id = await rpc(t ? 'update_transaction' : 'save_transaction', { p: { id: t?.id, type, party_id: Number(val('f_party')), date: val('f_date'), amount: numv('f_amt'), payment_type: val('f_mode'), description: val('f_note') } }); WA_AFTER = { id, edited: !!t }; });
 }
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
@@ -518,8 +560,8 @@ function billForm(type, edit = null) {
     const pv = val('f_party');
     if (!pv) { $('#f_party').focus(); throw new Error('Choose a party first'); }
     const party = pv === 'cash' ? null : pv;
-    if (edit) await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
-    else await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } });
+    if (edit) { await rpc('update_transaction', { p: { id: edit.t.id, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), round_off: numv('f_round') ?? 0, description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } }); WA_AFTER = { id: edit.t.id, edited: true }; }
+    else WA_AFTER = { id: await rpc('save_transaction', { p: { type, party_id: party ? Number(party) : null, date: val('f_date'), ref_no: val('f_ref'), lines, paid: numv('f_paid'), description: val('f_note'), ...(HAS_ACCT && sale ? { account: acctVal() } : {}) } }), edited: false };
   });
   const acctVal = () => { const v = val('f_acct') || ''; if (v !== '__new') return v; const n = val('f_acct_new'); if (!n) throw new Error('Type the new account name'); return n; };
   if ($('#f_acct')) $('#f_acct').onchange = () => { const isNew = $('#f_acct').value === '__new'; $('#f_acct_new').classList.toggle('hide', !isNew); if (isNew) $('#f_acct_new').focus(); };
@@ -725,7 +767,7 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit],[data-item-del]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle],[data-txn-edit],[data-adj-edit],[data-item-del],[data-wa]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
@@ -761,6 +803,7 @@ document.addEventListener('click', async (e) => {
         await rpc('delete_item', { p_id: i.id }); SEL.item = null; await refresh(); toast('Item moved to Recycle Bin');
       }
     }
+    else if (d.wa) await waOffer(Number(d.wa), false);
     else if (d.low) lowDialog();
     else if (d.go) location.hash = d.go;
     else if (d.goitem) { SEL.item = Number(d.goitem); $('#dlg').close(); if (location.hash === '#items') await route(); else location.hash = 'items'; }
