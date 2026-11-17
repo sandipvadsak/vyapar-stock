@@ -247,18 +247,22 @@ function partyForm(p = {}) {
 }
 
 // ---------- items ----------
+let ITEM_SHOW = 'active';   // active | inactive | all
 VIEWS.items = async () => {
   $('#title').textContent = 'Items';
-  const list = ITEMS.filter((i) => i.active);
+  const nA = ITEMS.filter((i) => i.active).length, nI = ITEMS.length - nA;
+  const list = ITEMS.filter((i) => ITEM_SHOW === 'all' || i.active === (ITEM_SHOW === 'active'));
   if (!list.find((i) => i.id === SEL.item)) SEL.item = list[0]?.id ?? null;
   $('#view').innerHTML = `<div class="split"><div class="panel list"><div class="hd"><input class="search" id="isearch" placeholder="Search item or code">${
-    can('manage_items') ? '<button class="btn pri sm" data-item-new="1">+ ADD ITEM</button>' : ''}</div><div class="rows" id="irows"></div></div><div class="det" id="idet"></div></div>`;
+    can('manage_items') ? '<button class="btn pri sm" data-item-new="1">+ ADD ITEM</button>' : ''}</div>
+    <div class="seg">${[['active', `Active (${nA})`], ['inactive', `Inactive (${nI})`], ['all', `All (${ITEMS.length})`]].map(([k, v]) => `<button type="button" class="${ITEM_SHOW === k ? 'on' : ''}" data-itemshow="${k}">${v}</button>`).join('')}</div>
+    <div class="rows" id="irows"></div></div><div class="det" id="idet"></div></div>`;
   const draw = () => {
     const s = $('#isearch').value.toLowerCase();
     const hit = list.filter((i) => i.name.toLowerCase().includes(s) || (i.code || '').toLowerCase().includes(s));
     $('#irows').innerHTML = hit.slice(0, 400).map((i) => {
       const low = !i.is_service && (i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
-      return `<div class="row ${i.id === SEL.item ? 'on' : ''}" data-item="${i.id}"><span class="n">${esc(i.name)}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
+      return `<div class="row ${i.id === SEL.item ? 'on' : ''} ${i.active ? '' : 'off'}" data-item="${i.id}"><span class="n">${esc(i.name)}${i.active ? '' : ' <em>Inactive</em>'}</span><span class="${low ? 'bad' : 'good'}">${i.is_service ? '' : qty(i.stock)}</span></div>`;
     }).join('') + (hit.length > 400 ? `<div class="empty">${hit.length - 400} more — type to search</div>` : '') || '<div class="empty">No item found</div>';
   };
   $('#isearch').oninput = draw; draw();
@@ -285,10 +289,11 @@ async function itemDetail() {
   if (can('purchase_price') && !i.is_service) facts.push(['💰', 'Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0)), 'gold']);
   const chips = [i.category && `📁 ${esc(i.category)}`, i.code && `# ${esc(i.code)}`, i.hsn && `HSN ${esc(i.hsn)}`, i.location && `📍 ${esc(i.location)}`,
     i.min_stock > 0 && `Alert at ${qty(i.min_stock)}`].filter(Boolean).map((c) => `<span class="chip">${c}</span>`).join('')
-    + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '');
+    + (low ? `<span class="chip lowchip">${i.stock < 0 ? 'NEGATIVE STOCK' : 'LOW STOCK'}</span>` : '')
+    + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
   $('#idet').innerHTML = `<div class="panel hero"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2><div class="chips">${chips}</div></div>${
     can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
-    can('manage_items') ? `<button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}</div>
+    can('manage_items') ? `<button class="btn sm ${i.active ? 'lite' : 'buy'}" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button><button class="btn sm" data-item-edit="${i.id}">EDIT</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
@@ -308,7 +313,7 @@ function itemForm(i = {}) {
     const category_id = cat ? await rpc('save_category', { p_name: cat }) : null;
     SEL.item = await rpc('save_item', { p: { id: i.id ?? null, name: val('f_name'), code: val('f_code'), category_id, unit: val('f_unit'), hsn: val('f_hsn'),
       tax_rate: numv('f_tax') ?? 0, sale_price: numv('f_sale'), purchase_price: numv('f_buy'), opening_stock: numv('f_open'), min_stock: numv('f_min') ?? 0,
-      location: val('f_loc'), description: i.description ?? null, is_service: i.is_service ?? false, active: i.id ? $('#f_active').checked : true } });
+      location: val('f_loc'), description: i.description ?? null, mrp: i.mrp ?? null, is_service: i.is_service ?? false, active: i.id ? $('#f_active').checked : true } });
   });
 }
 function adjustForm(id) {
@@ -583,7 +588,7 @@ function userForm(id) {
 
 // ---------- clicks ----------
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem]');
+  const el = e.target.closest('[data-new],[data-more],[data-txn],[data-party],[data-item],[data-party-new],[data-party-edit],[data-item-new],[data-item-edit],[data-adjust],[data-adj-del],[data-txn-del],[data-rep],[data-user],[data-toggle],[data-restore],[data-purge],[data-low],[data-go],[data-goitem],[data-itemshow],[data-item-toggle]');
   if (!el || !ME) return;
   const d = el.dataset;
   try {
@@ -601,6 +606,16 @@ document.addEventListener('click', async (e) => {
     else if (d.adjust) adjustForm(Number(d.adjust));
     else if (d.rep) { REP.tab = d.rep; route(); }
     else if (d.toggle) { const u = USERS.find((x) => x.id === d.toggle); await rpc('set_user', { p_id: u.id, p_name: u.name, p_perms: u.perms, p_active: !u.active }); await route(); toast(u.active ? 'Account switched off' : 'Account switched on'); }
+    else if (d.itemshow) { ITEM_SHOW = d.itemshow; await route(); }
+    else if (d.itemToggle) {
+      const i = ITEMS.find((x) => x.id === Number(d.itemToggle));
+      if (confirm(i.active ? `Mark "${i.name}" inactive? It will be hidden from bills and lists. Its old entries and stock stay.` : `Mark "${i.name}" active again?`)) {
+        await rpc('save_item', { p: { id: i.id, name: i.name, code: i.code, category_id: i.category_id, unit: i.unit, hsn: i.hsn, tax_rate: i.tax_rate, min_stock: i.min_stock,
+          location: i.location, description: i.description, sale_price: i.sale_price, purchase_price: i.purchase_price, mrp: i.mrp, active: !i.active } });
+        SEL.item = i.id; if (ITEM_SHOW !== 'all') ITEM_SHOW = i.active ? 'inactive' : 'active';
+        await refresh(); toast(i.active ? 'Marked inactive' : 'Marked active');
+      }
+    }
     else if (d.low) lowDialog();
     else if (d.go) location.hash = d.go;
     else if (d.goitem) { SEL.item = Number(d.goitem); $('#dlg').close(); if (location.hash === '#items') await route(); else location.hash = 'items'; }
