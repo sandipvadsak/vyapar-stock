@@ -407,7 +407,8 @@ async function entriesView(fixed, title) {
     const tiles = [];
     if (fixed && amounts) {
       tiles.push(['🧾', `${title} total`, money(sum(fixed)), 'purple'], ['💵', fixed === 'purchase' ? 'Paid' : fixed === 'sale_return' ? 'Paid back' : 'Received', money(sum(fixed, 'paid')), 'green'],
-        ['⏳', 'Unpaid balance', money(sum(fixed, 'balance')), 'gold']);
+        ['⏳', rows.some((r) => isOwn({ name: r.party }) && (r.balance || 0) > 0.005) ? 'Unpaid balance (without own account)' : 'Unpaid balance',
+          money(rows.filter((r) => r.type === fixed && !isOwn({ name: r.party })).reduce((s, r) => s + (r.balance || 0), 0)), 'gold']);
     } else if (!fixed) {
       if (can('sale_price')) tiles.push(['🧾', 'Sale', money(sum('sale')), 'purple'], ['↩️', 'Credit notes', money(sum('sale_return')), 'gold']);
       if (can('purchase_price')) tiles.push(['🛒', 'Purchase', money(sum('purchase')), 'blue']);
