@@ -64,10 +64,12 @@ async function loadMaster() {
   const fam = (p) => new Map(ITEMS.filter((i) => i.active && i.name.toUpperCase().startsWith(p + '-')).map((i) => [i.name.slice(p.length + 1).trim().toLowerCase(), i]));
   const cep = fam('CEP'), dcep = fam('DCEP');
   // A logo piece is always billed together with its plain base piece (Black or White) in the same quantity.
-  const side = (word, m) => { const v = [...m.values()], isLogo = (i) => /-logo$/i.test(i.name.trim());
-    const bases = v.filter((i) => !isLogo(i)).sort((a, b) => (/black$/i.test(b.name) ? 1 : 0) - (/black$/i.test(a.name) ? 1 : 0) || a.name.localeCompare(b.name));
-    return { word, logos: v.filter(isLogo).sort((a, b) => a.name.localeCompare(b.name)), base: bases.find((i) => /-black$/i.test(i.name.trim())) || null }; };
-  BUNDLES = [side('CEP', cep), side('DCEP', dcep)].filter((b) => b.logos.length && b.base);
+  // The base piece is the plain Black or White item of the same family (CEP-Black, CEP-White, DCEP-Black, DCEP-White).
+  const side = (word, m) => {
+    const base = (colour) => ITEMS.find((i) => i.name.trim().toLowerCase() === `${word}-${colour}`.toLowerCase());
+    return { word, logos: [...m.values()].filter((i) => /-logo$/i.test(i.name.trim())).sort((x, y) => x.name.localeCompare(y.name)), bases: [base('Black'), base('White')].filter(Boolean) };
+  };
+  BUNDLES = [side('CEP', cep), side('DCEP', dcep)].filter((g) => g.logos.length && g.bases.length);
 }
 const balHtml = (b) => (b == null ? '<span class="mute">—</span>'
   : b > 0.005 ? `<span class="good">${money(b)}</span>` : b < -0.005 ? `<span class="bad">${money(-b)}</span>` : money(0));
@@ -474,10 +476,10 @@ function billForm(type, edit = null) {
     <div id="ipick" class="hide"></div>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
-    ${BUNDLES.length ? `<div class="bundle"><div class="btitle">Logo + Black (one ADD puts both lines on the bill)</div>${BUNDLES.map((g, n) => `
+    ${BUNDLES.length ? `<div class="bundle"><div class="btitle">Logo + Black / White (one ADD puts both lines on the bill)</div>${BUNDLES.map((g, n) => `
       <div class="bgrp ${g.word.toLowerCase()}"><span class="btag">${g.word}</span>
         <label class="f">${g.word} logo<select id="b_i${n}"><option value="">Choose logo</option>${g.logos.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <div class="bwith">+ <b>${esc(g.base.name)}</b><small>stock ${qty(g.base.stock)}</small></div>
+        <label class="f">With<select id="b_b${n}">${g.bases.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
         <label class="f">Qty<input id="b_q${n}" type="number" step="any" min="0" style="width:74px"></label><button class="btn sm ${n ? 'buy' : 'pri'}" type="button" data-badd="${n}">+ ADD</button></div>`).join('')}
       <span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span>${edit ? '<label class="f">Round off<input id="f_round" type="number" step="any" style="width:110px"></label>' : ''}<label class="f" id="paidWrap">${edit ? 'Paid' : 'Paid now'}<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
@@ -586,13 +588,13 @@ function billForm(type, edit = null) {
     // One ADD puts two lines on the bill: the logo piece and its base piece, same quantity.
     const addPair = (n) => {
       const g = BUNDLES[n], find = (id) => ITEMS.find((i) => i.id === Number($(id).value));
-      const logo = find('#b_i' + n), base = g.base, q = Number($('#b_q' + n).value);
+      const logo = find('#b_i' + n), base = find('#b_b' + n), q = Number($('#b_q' + n).value);
       if (!logo) { $('#b_msg').textContent = `Choose the ${g.word} logo`; return; }
       if (!(q > 0)) { $('#b_msg').textContent = 'Enter the quantity'; return; }
       fill(logo, q); fill(base, q);
       if ($('.li', $('#lbody').lastElementChild).value.trim()) $('#lbody').insertAdjacentHTML('beforeend', line());
       $('#b_msg').textContent = `Added 2 lines: ${logo.name} × ${q} and ${base.name} × ${q}`;
-      $('#b_i' + n).value = ''; $('#b_q' + n).value = '';
+      $('#b_i' + n).value = ''; $('#b_q' + n).value = ''; $('#b_b' + n).selectedIndex = 0;
       calc();
     };
     document.querySelectorAll('[data-badd]').forEach((b) => { b.onclick = () => addPair(Number(b.dataset.badd)); });
