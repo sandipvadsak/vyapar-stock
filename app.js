@@ -20,7 +20,7 @@ const PERMS = [
   ['edit_entries', 'Can edit saved entries (only those whose amounts they can see)'],
 ];
 
-let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = { cep: [], dcep: [], twin: new Map() };
+let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = [];
 let HAS_BIN = false, HAS_EDIT = false, HAS_ACCT = false, ACCOUNTS = [];
 const isOwn = (p) => (CFG.ownParties || []).some((n) => n.toLowerCase() === String(p.name || '').trim().toLowerCase());
 // Each account gets its own colour (by its place in the alphabetical list), the same everywhere.
@@ -63,7 +63,11 @@ async function loadMaster() {
   // CEP + DCEP of the same design are sold together: one pick adds both lines.
   const fam = (p) => new Map(ITEMS.filter((i) => i.active && i.name.toUpperCase().startsWith(p + '-')).map((i) => [i.name.slice(p.length + 1).trim().toLowerCase(), i]));
   const cep = fam('CEP'), dcep = fam('DCEP');
-  BUNDLES = { cep: [...cep.values()], dcep: [...dcep.values()], twin: new Map([...cep].filter(([k]) => dcep.has(k)).map(([k, c]) => [c.id, dcep.get(k).id])) };
+  // A logo piece is always billed together with its plain base piece (Black or White) in the same quantity.
+  const side = (word, m) => { const v = [...m.values()], isLogo = (i) => /-logo$/i.test(i.name.trim());
+    const bases = v.filter((i) => !isLogo(i)).sort((a, b) => (/black$/i.test(b.name) ? 1 : 0) - (/black$/i.test(a.name) ? 1 : 0) || a.name.localeCompare(b.name));
+    return { word, logos: v.filter(isLogo).sort((a, b) => a.name.localeCompare(b.name)), bases }; };
+  BUNDLES = [side('CEP', cep), side('DCEP', dcep)].filter((b) => b.logos.length && b.bases.length);
 }
 const balHtml = (b) => (b == null ? '<span class="mute">—</span>'
   : b > 0.005 ? `<span class="good">${money(b)}</span>` : b < -0.005 ? `<span class="bad">${money(-b)}</span>` : money(0));
@@ -470,11 +474,11 @@ function billForm(type, edit = null) {
     <div id="ipick" class="hide"></div>
     <table class="lines" style="margin-top:14px"><thead><tr><th>ITEM</th><th>QTY</th>${see ? '<th>PRICE / UNIT</th><th class="r">AMOUNT</th>' : ''}<th></th></tr></thead><tbody id="lbody">${line()}${line()}</tbody></table>
     <button class="btn sm" type="button" id="ladd">+ ADD ROW</button>
-    ${BUNDLES.cep.length && BUNDLES.dcep.length ? `<div class="bundle"><div class="btitle">CEP + DCEP bundle</div>
-      <div class="bgrp cep"><span class="btag">CEP</span><label class="f">CEP item<select id="b_i1"><option value="">Choose CEP</option>${BUNDLES.cep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <label class="f">CEP qty<input id="b_q1" type="number" step="any" min="0" style="width:90px"></label><button class="btn sm pri" type="button" data-badd="1">+ ADD</button></div>
-      <div class="bgrp dcep"><span class="btag">DCEP</span><label class="f">DCEP item<select id="b_i2"><option value="">Choose DCEP</option>${BUNDLES.dcep.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <label class="f">DCEP qty<input id="b_q2" type="number" step="any" min="0" style="width:90px"></label><button class="btn sm buy" type="button" data-badd="2">+ ADD</button></div>
+    ${BUNDLES.length ? `<div class="bundle"><div class="btitle">Logo + base (adds both lines)</div>${BUNDLES.map((g, n) => `
+      <div class="bgrp ${g.word.toLowerCase()}"><span class="btag">${g.word}</span>
+        <label class="f">${g.word} logo<select id="b_i${n}"><option value="">Choose logo</option>${g.logos.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+        <label class="f">With<select id="b_b${n}" style="width:auto">${g.bases.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
+        <label class="f">Qty<input id="b_q${n}" type="number" step="any" min="0" style="width:74px"></label><button class="btn sm ${n ? 'buy' : 'pri'}" type="button" data-badd="${n}">+ ADD</button></div>`).join('')}
       <span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span>${edit ? '<label class="f">Round off<input id="f_round" type="number" step="any" style="width:110px"></label>' : ''}<label class="f" id="paidWrap">${edit ? 'Paid' : 'Paid now'}<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>
@@ -579,19 +583,21 @@ function billForm(type, edit = null) {
     if (see) $('.lp', tr).value = (sale ? it.sale_price : it.purchase_price) ?? '';
   };
   if ($('#b_msg')) {
-    // CEP and DCEP are separate products: each box has its own ADD button.
-    const addOne = (n) => {
-      const it = ITEMS.find((i) => i.id === Number($('#b_i' + n).value)), q = Number($('#b_q' + n).value), word = n === 1 ? 'CEP' : 'DCEP';
-      if (!it) { $('#b_msg').textContent = `Choose the ${word} item`; return; }
-      if (!(q > 0)) { $('#b_msg').textContent = `Enter the ${word} quantity`; return; }
-      fill(it, q);
+    // One ADD puts two lines on the bill: the logo piece and its base piece, same quantity.
+    const addPair = (n) => {
+      const g = BUNDLES[n], find = (id) => ITEMS.find((i) => i.id === Number($(id).value));
+      const logo = find('#b_i' + n), base = find('#b_b' + n), q = Number($('#b_q' + n).value);
+      if (!logo) { $('#b_msg').textContent = `Choose the ${g.word} logo`; return; }
+      if (!base) { $('#b_msg').textContent = `Choose the ${g.word} base item`; return; }
+      if (!(q > 0)) { $('#b_msg').textContent = 'Enter the quantity'; return; }
+      fill(logo, q); fill(base, q);
       if ($('.li', $('#lbody').lastElementChild).value.trim()) $('#lbody').insertAdjacentHTML('beforeend', line());
-      $('#b_msg').textContent = `Added: ${it.name} × ${q}`;
-      $('#b_i' + n).value = ''; $('#b_q' + n).value = '';
+      $('#b_msg').textContent = `Added 2 lines: ${logo.name} × ${q} and ${base.name} × ${q}`;
+      $('#b_i' + n).value = ''; $('#b_q' + n).value = ''; $('#b_b' + n).selectedIndex = 0;
       calc();
     };
-    document.querySelectorAll('[data-badd]').forEach((b) => { b.onclick = () => addOne(Number(b.dataset.badd)); });
-    for (const n of [1, 2]) $('#b_q' + n).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addOne(n); } });
+    document.querySelectorAll('[data-badd]').forEach((b) => { b.onclick = () => addPair(Number(b.dataset.badd)); });
+    BUNDLES.forEach((g, n) => $('#b_q' + n).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addPair(n); } }));
   }
   if (edit) {
     $('#lbody').innerHTML = edit.lines.map(() => line()).join('') + line();
