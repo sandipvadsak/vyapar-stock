@@ -25,7 +25,7 @@ h1,h2,h3{margin:0}
 .lg.big{width:44px;height:44px;vertical-align:-11px;margin-right:12px}
 #hdr .logo span{margin-left:.3em}
 #hdr .logo span{color:var(--acc)}
-.ver{display:inline-block;font-size:12px;font-weight:800;line-height:1;color:#fff;background:var(--acc);padding:4px 9px;border-radius:999px;margin-left:.6em;letter-spacing:0;vertical-align:middle}
+.ver{display:inline-block;font-size:12px;font-weight:800;line-height:1;color:#fff;background:var(--acc);padding:4px 9px;border-radius:999px;margin-left:.6em;letter-spacing:0;flex:none;position:relative;top:1px}
 .ver:empty{display:none}
 #hdr .who{font-size:15.5px;white-space:nowrap}
 #hdr .live{display:flex;align-items:center;gap:7px;color:var(--mute);white-space:nowrap}
@@ -261,8 +261,8 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 .totals b{font-size:18px}
 #login{min-height:100%;display:grid;place-items:center;padding:20px;background:var(--side)}
 #login .box{background:#fff;border-radius:16px;padding:28px;width:min(390px,100%);display:flex;flex-direction:column;gap:13px;box-shadow:0 6px 0 var(--acc-d)}
-#login h1{font-size:25px;font-weight:800}
-#login h1 span{color:var(--acc)}
+#login h1{font-size:25px;font-weight:800;display:flex;align-items:center;white-space:nowrap}
+#login h1 span{color:var(--acc);margin-left:.3em}
 #login .msg{min-height:20px;font-size:13px;color:var(--bad)}
 #askdlg{width:min(440px,94vw);border-radius:16px}
 .askbox{padding:22px 22px 18px}
@@ -326,7 +326,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=71"></script>
-<script src="app.js?v=71"></script>
+<script src="config.js?v=72"></script>
+<script src="app.js?v=72"></script>
 </body>
 </html>
