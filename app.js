@@ -513,13 +513,13 @@ const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This mont
 function periodDates(p) {
   const iso = (d) => d.toLocaleDateString('en-CA'), n = new Date(), y = n.getFullYear(), m = n.getMonth();
   if (p === 'today') return [iso(n), iso(n)];
-  if (p === 'week') { const d = new Date(n); d.setDate(n.getDate() - ((n.getDay() + 6) % 7)); return [iso(d), iso(n)]; }
+  if (p === 'week') { const d = new Date(n); d.setDate(n.getDate() - ((n.getDay() + 6) % 7)); const e = new Date(d); e.setDate(d.getDate() + 6); return [iso(d), iso(e)]; }
   if (p === 'lastmonth') return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
-  if (p === 'quarter') return [iso(new Date(y, Math.floor(m / 3) * 3, 1)), iso(n)];
+  if (p === 'quarter') return [iso(new Date(y, Math.floor(m / 3) * 3, 1)), iso(new Date(y, Math.floor(m / 3) * 3 + 3, 0))];
   if (p === 'year') return [iso(new Date(y, 0, 1)), iso(new Date(y, 11, 31))];
   if (p === 'lastyear') return [iso(new Date(y - 1, 0, 1)), iso(new Date(y - 1, 11, 31))];
   if (p === 'all') return ['2000-01-01', '2099-12-31'];
-  return [iso(new Date(y, m, 1)), iso(n)];
+  return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];   // whole month, so entries dated ahead (appointments) show too
 }
 // One list screen, used for "all entries" and for the Sale / Purchase / Credit Note menu tabs.
 async function entriesView(fixed, title) {
