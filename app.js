@@ -662,6 +662,9 @@ function billForm(type, edit = null) {
   const acctVal = () => { const v = val('f_acct') || ''; if (v !== '__new') return v; const n = val('f_acct_new'); if (!n) throw new Error('Type the new account name'); return n; };
   if ($('#f_acct')) $('#f_acct').onchange = () => { const isNew = $('#f_acct').value === '__new'; $('#f_acct_new').classList.toggle('hide', !isNew); if (isNew) $('#f_acct_new').focus(); };
   const calc = () => {
+    // one empty row always waits at the bottom, so ADD ROW is never needed
+    const lastRow = $('#lbody').lastElementChild;
+    if (!lastRow || $('.li', lastRow).value.trim()) $('#lbody').insertAdjacentHTML('beforeend', line());
     let total = 0, n = 0, q = 0;
     for (const tr of $('#lbody').children) {
       const name = $('.li', tr).value.trim(), it = BYLABEL.get(name.toLowerCase()), lq = Number($('.lq', tr).value || 0);
@@ -734,6 +737,12 @@ function billForm(type, edit = null) {
   $('#lbody').addEventListener('input', (e) => { if (e.target.classList.contains('li') && e.isTrusted !== false && document.activeElement === e.target) openPick(e.target); });
   $('#lbody').addEventListener('focusout', (e) => { if (e.target.classList.contains('li')) setTimeout(() => { if (pickFor === e.target && document.activeElement !== e.target) closePick(); }, 150); });
   $('#lbody').addEventListener('keydown', (e) => {
+    // Enter in quantity or price jumps to the next row's item box
+    if (e.key === 'Enter' && (e.target.classList.contains('lq') || e.target.classList.contains('lp'))) {
+      e.preventDefault(); calc();
+      const nx = e.target.closest('tr').nextElementSibling; if (nx) $('.li', nx).focus();
+      return;
+    }
     if (!e.target.classList.contains('li')) return;
     const open = !pick.classList.contains('hide');
     if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openPick(e.target); else { pickAt = Math.min(pickAt + 1, pickList.length - 1); drawPick(); } }
