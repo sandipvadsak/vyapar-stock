@@ -624,7 +624,7 @@ function paymentForm(type, partyId, edit = null) {
 }
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
-  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0"></td>${
+  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"></td><td style="width:110px"><input class="lq" type="number" step="any" min="0" value="1"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party *<select id="f_party"><option value="">Choose party</option><option value="cash" ${edit && edit.t.party_id == null ? 'selected' : ''}>Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
@@ -637,7 +637,7 @@ function billForm(type, edit = null) {
       <div class="bgrp ${g.word.toLowerCase()}"><span class="btag">${g.word}</span>
         <label class="f">${g.word} logo<select id="b_i${n}"><option value="">Choose logo</option>${g.logos.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
         <label class="f">With<select id="b_b${n}">${g.bases.map((i) => `<option value="${i.id}">${esc(i.name)} (stock ${qty(i.stock)})</option>`).join('')}</select></label>
-        <label class="f">Qty<input id="b_q${n}" type="number" step="any" min="0" style="width:74px"></label><button class="btn sm ${n ? 'buy' : 'pri'}" type="button" data-badd="${n}">+ ADD</button></div>`).join('')}
+        <label class="f">Qty<input id="b_q${n}" type="number" step="any" min="0" value="1" style="width:74px"></label><button class="btn sm ${n ? 'buy' : 'pri'}" type="button" data-badd="${n}">+ ADD</button></div>`).join('')}
       <span class="mute" id="b_msg"></span></div>` : ''}
     <div class="totals">${see ? `<span>Total: <b id="ltotal">${money(0)}</b></span>${edit ? '<label class="f">Round off<input id="f_round" type="number" step="any" style="width:110px"></label>' : ''}<label class="f" id="paidWrap">${edit ? 'Paid' : 'Paid now'}<input id="f_paid" type="number" step="any" min="0" style="width:140px"></label>`
       : '<span class="mute">Prices are filled automatically from the item.</span>'}</div>
@@ -728,7 +728,7 @@ function billForm(type, edit = null) {
     closePick();
     input.dispatchEvent(new Event('input', { bubbles: true }));
     closePick();
-    $('.lq', tr).focus();
+    $('.lq', tr).focus(); $('.lq', tr).select();
   };
   $('#lbody').addEventListener('focusin', (e) => { if (e.target.classList.contains('li')) openPick(e.target); });
   $('#lbody').addEventListener('input', (e) => { if (e.target.classList.contains('li') && e.isTrusted !== false && document.activeElement === e.target) openPick(e.target); });
@@ -759,7 +759,7 @@ function billForm(type, edit = null) {
       fill(logo, q); fill(base, q);
       if ($('.li', $('#lbody').lastElementChild).value.trim()) $('#lbody').insertAdjacentHTML('beforeend', line());
       $('#b_msg').textContent = `Added 2 lines: ${logo.name} × ${q} and ${base.name} × ${q}`;
-      $('#b_i' + n).value = ''; $('#b_q' + n).value = ''; $('#b_b' + n).selectedIndex = 0;
+      $('#b_i' + n).value = ''; $('#b_q' + n).value = 1; $('#b_b' + n).selectedIndex = 0;
       calc();
     };
     document.querySelectorAll('[data-badd]').forEach((b) => { b.onclick = () => addPair(Number(b.dataset.badd)); });
