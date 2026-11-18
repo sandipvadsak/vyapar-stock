@@ -921,3 +921,6 @@ document.addEventListener('click', async (e) => {
 });
 
 boot();
+
+// version beside the app name: read from this file's own ?v= tag, so it always shows the latest update
+{ const v = (document.querySelector('script[src*="app.js"]')?.src.match(/[?&]v=(\d+)/) || [])[1]; if (v) document.querySelectorAll('.ver').forEach((e) => { e.textContent = 'V' + v; }); }
