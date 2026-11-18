@@ -287,7 +287,7 @@ VIEWS.home = async () => {
     cards.push(['To receive', rs(mine.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0)), 'Parties owe you', 'data-go="parties"', '⬇️', 'green']);
     cards.push(['To pay', rs(mine.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0)), 'You owe parties', 'data-go="parties"', '⬆️', 'rose']);
   }
-  if (can('purchase_price')) cards.push(['Stock value', rs(goods.reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), 'At purchase price', '', '💰', 'gold']);
+  if (can('purchase_price')) cards.push(['Stock value', rs(ITEMS.filter((i) => !i.is_service).reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), 'At purchase price, inactive items too', '', '💰', 'gold']);
   cards.push(['Items', goods.length.toLocaleString('en-IN'), 'Active items', 'data-go="items"', '📦', 'blue'],
     ['Low stock items', low, low ? 'Click to see the list' : 'All items are fine', 'data-low="1"', '⚠️', low ? 'amber' : 'green']);
   $('#view').innerHTML = `<div class="kpis">${cards.map(([k, v, sub, attr, ic, c]) => `<div class="kpi ${c} ${attr ? 'tap' : ''}" ${attr}><div class="ic">${ic}</div><div class="tx"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${attr ? '<div class="go">›</div>' : ''}</div>`).join('')}</div>
