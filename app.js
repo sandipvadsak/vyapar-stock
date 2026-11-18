@@ -509,16 +509,15 @@ function adjustForm(id, a = null) {
 // ---------- transactions ----------
 let FILTER = { type: '', period: 'month', from: '', to: '', party: '', status: '', account: '', q: '' };
 const PERIODS = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'],
-  ['fy', 'This financial year'], ['lastfy', 'Last financial year'], ['all', 'All time'], ['custom', 'Custom dates']];
+  ['year', 'This year'], ['lastyear', 'Last year'], ['all', 'All time'], ['custom', 'Custom dates']];
 function periodDates(p) {
   const iso = (d) => d.toLocaleDateString('en-CA'), n = new Date(), y = n.getFullYear(), m = n.getMonth();
-  const fy = m >= 3 ? y : y - 1;   // financial year starts 1 April
   if (p === 'today') return [iso(n), iso(n)];
   if (p === 'week') { const d = new Date(n); d.setDate(n.getDate() - ((n.getDay() + 6) % 7)); return [iso(d), iso(n)]; }
   if (p === 'lastmonth') return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
   if (p === 'quarter') return [iso(new Date(y, Math.floor(m / 3) * 3, 1)), iso(n)];
-  if (p === 'fy') return [iso(new Date(fy, 3, 1)), iso(new Date(fy + 1, 2, 31))];
-  if (p === 'lastfy') return [iso(new Date(fy - 1, 3, 1)), iso(new Date(fy, 2, 31))];
+  if (p === 'year') return [iso(new Date(y, 0, 1)), iso(new Date(y, 11, 31))];
+  if (p === 'lastyear') return [iso(new Date(y - 1, 0, 1)), iso(new Date(y - 1, 11, 31))];
   if (p === 'all') return ['2000-01-01', '2099-12-31'];
   return [iso(new Date(y, m, 1)), iso(n)];
 }
