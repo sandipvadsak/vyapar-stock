@@ -21,6 +21,7 @@ const PERMS = [
   ['delete_entries', 'Can delete entries (they go to the Recycle Bin, only the owner can restore)'],
   ['delete_items', 'Can delete inactive items (they go to the Recycle Bin, only the owner can restore)'],
   ['adjust_stock', 'Can adjust stock by hand (ADJUST STOCK button)'],
+  ['adjust_inactive', 'Can adjust stock of INACTIVE items only'],
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = [];
@@ -468,7 +469,7 @@ async function itemDetail() {
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
   $('#idet').innerHTML = `<div class="panel hero near"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
     can('manage_items') ? `<button class="btn sm buy" data-item-edit="${i.id}">✏️ EDIT</button>` : ''}${
-    canAdjust() && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
+    (canAdjust() || (can('adjust_inactive') && !i.active)) && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
     can('manage_items') ? `<button class="btn sm lite" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
