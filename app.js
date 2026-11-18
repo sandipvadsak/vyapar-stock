@@ -19,6 +19,7 @@ const PERMS = [
   ['entries', 'Can make entries (sale, purchase, stock)'],
   ['edit_entries', 'Can edit saved entries (only those whose amounts they can see)'],
   ['delete_entries', 'Can delete entries (they go to the Recycle Bin, only the owner can restore)'],
+  ['delete_items', 'Can delete inactive items (they go to the Recycle Bin, only the owner can restore)'],
   ['adjust_stock', 'Can adjust stock by hand (ADJUST STOCK button)'],
 ];
 
@@ -63,7 +64,7 @@ async function loadMaster() {
   HAS_BIN = ME?.role === 'owner' && !(await sb.from('v_recycle_bin').select('id').limit(1)).error;
   HAS_EDIT = !(await sb.from('v_transactions').select('edited_at').limit(1)).error;
   // is the delete-item function in the database yet? (id -1 never exists, so nothing is deleted)
-  HAS_ITEMDEL = ME?.role === 'owner' && (await sb.rpc('delete_item', { p_id: -1 })).error?.code === 'P0001';
+  HAS_ITEMDEL = (ME?.role === 'owner' || can('delete_items')) && (await sb.rpc('delete_item', { p_id: -1 })).error?.code === 'P0001';
   HAS_ACCT = !(await sb.from('v_transactions').select('account').limit(1)).error;
   ACCOUNTS = HAS_ACCT ? ((await sb.rpc('list_accounts')).data || []) : [];
   const seen = new Map();
@@ -421,7 +422,7 @@ async function bulkItems(mode) {
   if (!n) return;
   const del = mode === 'del';
   if (!(await ask(del ? `Delete ${n} item${n === 1 ? '' : 's'}?` : `Mark ${n} item${n === 1 ? '' : 's'} inactive?`,
-    del ? 'They move to the Recycle Bin and disappear from every item list. Old bills still show their names. You can restore them later.'
+    del ? 'They move to the Recycle Bin and disappear from every item list. Old bills still show their names. ' + (owner() ? 'You can restore them later.' : 'Only the owner can bring them back.')
       : 'They will be hidden from bills and from the Active list. Their old entries and stock stay as they are.',
     del ? `YES, DELETE ${n}` : `YES, MARK ${n} INACTIVE`, del ? 'danger' : 'pri'))) return;
   let done = 0; const failed = [];
@@ -894,7 +895,7 @@ document.addEventListener('click', async (e) => {
     }
     else if (d.itemDel) {
       const i = ITEMS.find((x) => x.id === Number(d.itemDel));
-      if (await ask('Delete this item?', `"${i.name}" will move to the Recycle Bin and disappear from every item list. Old bills still show its name. You can restore it later.`, 'YES, DELETE', 'danger')) {
+      if (await ask('Delete this item?', `"${i.name}" will move to the Recycle Bin and disappear from every item list. Old bills still show its name. ${owner() ? 'You can restore it later.' : 'Only the owner can bring it back.'}`, 'YES, DELETE', 'danger')) {
         await rpc('delete_item', { p_id: i.id }); SEL.item = null; await refresh(); toast('Item moved to Recycle Bin');
       }
     }
