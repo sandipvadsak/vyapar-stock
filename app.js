@@ -795,11 +795,11 @@ VIEWS.reports = async () => {
   if (can('party_balance')) tabs.push(['party', 'Party balances']);
   let head = [], rows = [], foot = '';
   if (REP.tab === 'stock' || REP.tab === 'low') {
-    let list = ITEMS.filter((i) => i.active && !i.is_service);
+    let list = ITEMS.filter((i) => (i.active || REP.tab === 'stock') && !i.is_service);
     if (REP.tab === 'low') list = list.filter((i) => i.stock < 0 || (i.min_stock > 0 && i.stock <= i.min_stock));
     const v = can('purchase_price');
     head = ['Item', 'Code', 'Category', 'Stock', 'Unit', ...(REP.tab === 'low' ? ['Alert at'] : []), ...(v ? ['Purchase price', 'Stock value'] : [])];
-    rows = list.map((i) => [i.name, i.code || '', i.category || '', i.stock, i.unit || '', ...(REP.tab === 'low' ? [i.min_stock] : []), ...(v ? [i.purchase_price ?? 0, Math.max(i.stock, 0) * (i.purchase_price || 0)] : [])]);
+    rows = list.map((i) => [i.active ? i.name : `${i.name} (inactive)`, i.code || '', i.category || '', i.stock, i.unit || '', ...(REP.tab === 'low' ? [i.min_stock] : []), ...(v ? [i.purchase_price ?? 0, Math.max(i.stock, 0) * (i.purchase_price || 0)] : [])]);
     if (v) foot = `Total stock value: <b>${money(rows.reduce((s, r) => s + r[r.length - 1], 0))}</b>`;
   } else if (REP.tab === 'itemwise') {
     const data = await rpc('report_items', { p_from: REP.from, p_to: REP.to });
