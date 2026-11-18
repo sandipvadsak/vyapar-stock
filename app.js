@@ -287,7 +287,8 @@ VIEWS.home = async () => {
     cards.push(['To receive', rs(mine.reduce((s, p) => s + Math.max(p.balance || 0, 0), 0)), 'Parties owe you', 'data-go="parties"', '⬇️', 'green']);
     cards.push(['To pay', rs(mine.reduce((s, p) => s + Math.max(-(p.balance || 0), 0), 0)), 'You owe parties', 'data-go="parties"', '⬆️', 'rose']);
   }
-  if (can('purchase_price')) cards.push(['Stock value', rs(ITEMS.filter((i) => !i.is_service).reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0)), 'At purchase price, inactive items too', '', '💰', 'gold']);
+  const sval = (on) => ITEMS.filter((i) => !i.is_service && i.active === on).reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0);
+  if (can('purchase_price')) cards.push(['Stock value (total)', rs(sval(true) + sval(false)), `Active ${rs(sval(true))}<br>Inactive ${rs(sval(false))}`, '', '💰', 'gold']);
   cards.push(['Items', goods.length.toLocaleString('en-IN'), 'Active items', 'data-go="items"', '📦', 'blue'],
     ['Low stock items', low, low ? 'Click to see the list' : 'All items are fine', 'data-low="1"', '⚠️', low ? 'amber' : 'green']);
   $('#view').innerHTML = `<div class="kpis">${cards.map(([k, v, sub, attr, ic, c]) => `<div class="kpi ${c} ${attr ? 'tap' : ''}" ${attr}><div class="ic">${ic}</div><div class="tx"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${attr ? '<div class="go">›</div>' : ''}</div>`).join('')}</div>
@@ -800,7 +801,8 @@ VIEWS.reports = async () => {
     const v = can('purchase_price');
     head = ['Item', 'Code', 'Category', 'Stock', 'Unit', ...(REP.tab === 'low' ? ['Alert at'] : []), ...(v ? ['Purchase price', 'Stock value'] : [])];
     rows = list.map((i) => [i.active ? i.name : `${i.name} (inactive)`, i.code || '', i.category || '', i.stock, i.unit || '', ...(REP.tab === 'low' ? [i.min_stock] : []), ...(v ? [i.purchase_price ?? 0, Math.max(i.stock, 0) * (i.purchase_price || 0)] : [])]);
-    if (v) foot = `Total stock value: <b>${money(rows.reduce((s, r) => s + r[r.length - 1], 0))}</b>`;
+    if (v) { const sv = (f) => list.filter(f).reduce((s, i) => s + Math.max(i.stock, 0) * (i.purchase_price || 0), 0), act = sv((i) => i.active), ina = sv((i) => !i.active);
+      foot = REP.tab === 'stock' ? `Active: <b>${money(act)}</b> &nbsp; Inactive: <b>${money(ina)}</b> &nbsp; Total stock value: <b>${money(act + ina)}</b>` : `Total stock value: <b>${money(act)}</b>`; }
   } else if (REP.tab === 'itemwise') {
     const data = await rpc('report_items', { p_from: REP.from, p_to: REP.to });
     head = ['Item', 'Unit', 'Qty in', 'Qty out', ...(can('sale_price') ? ['Sale amount'] : []), ...(can('purchase_price') ? ['Purchase amount'] : [])];
