@@ -25,7 +25,8 @@ h1,h2,h3{margin:0}
 .lg.big{width:44px;height:44px;vertical-align:-11px;margin-right:12px}
 #hdr .logo span{margin-left:.3em}
 #hdr .logo span{color:var(--acc)}
-.ver{font-size:12px;font-weight:600;opacity:.6;margin-left:.5em;letter-spacing:0}
+.ver{display:inline-block;font-size:12px;font-weight:800;line-height:1;color:#fff;background:var(--acc);padding:4px 9px;border-radius:999px;margin-left:.6em;letter-spacing:0;vertical-align:middle}
+.ver:empty{display:none}
 #hdr .who{font-size:15.5px;white-space:nowrap}
 #hdr .live{display:flex;align-items:center;gap:7px;color:var(--mute);white-space:nowrap}
 #hdr .live i{width:13px;height:13px;border-radius:50%;background:#22c55e;display:inline-block}
@@ -325,7 +326,7 @@ table.stick th{position:sticky;top:calc(var(--sumh,0px) - 16px);z-index:4;backgr
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=70"></script>
-<script src="app.js?v=70"></script>
+<script src="config.js?v=71"></script>
+<script src="app.js?v=71"></script>
 </body>
 </html>
