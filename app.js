@@ -9,6 +9,10 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const monthStart = () => today().slice(0, 8) + '01';
 const TYPE = { sale: 'Sale', purchase: 'Purchase', sale_return: 'Credit Note', purchase_return: 'Debit Note',
   payment_in: 'Payment-In', payment_out: 'Payment-Out', other: 'Other' };
+// A bill line that is only text (goods that are not an item): it is saved on this one service item, with the typed words as the line note, so no stock moves.
+const FREE_NAME = 'Other (no stock)';
+const freeItem = () => ITEMS.find((i) => i.is_service && i.name === FREE_NAME);
+const lineName = (l) => (l.description && l.item === FREE_NAME ? l.description : l.item);
 const PERMS = [
   ['sale_price', 'Can see sale price and sale amounts'],
   ['purchase_price', 'Can see purchase price, purchase amounts and stock value'],
@@ -199,7 +203,7 @@ function waText(t, p, edited, lines = []) {
     let used = 0, shown = 0, q = 0;
     for (const l of lines) if (!isLogoPart(l.item)) q += Number(l.qty || 0);
     for (const l of lines) {
-      const row = `${shown + 1}. ${l.item} - ${num(l.qty)} x ${rs(l.price)} = ${rs(l.total)}`;
+      const row = `${shown + 1}. ${lineName(l)} - ${num(l.qty)} x ${rs(l.price)} = ${rs(l.total)}`;
       if (used + row.length > 2600) break;
       L.push(row); used += row.length + 1; shown++;
     }
@@ -610,7 +614,7 @@ async function txnView(id) {
       ${t.edited_at ? sf('Last edited', esc(`${t.edited_by_name || ''} · ${when(t.edited_at)}`), 'sm') : t.created_by_name ? sf('Entered by', esc(t.created_by_name), 'sm') : ''}
     </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
-      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
+      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(lineName(l))}</td><td class="r">${qty(l.qty)}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
   null, { extra: (waCan(t) ? `<button class="btn wa" type="button" data-wa="${id}">WHATSAPP</button>` : '') + (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (canDelete() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
   sumFit();
 }
@@ -624,8 +628,8 @@ function paymentForm(type, partyId, edit = null) {
 }
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
-  const canNewItem = owner() || can('manage_items');
-  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"><div class="lmiss hide">Not in the item list${canNewItem ? ' <button class="btn sm" type="button" data-mkitem="1">+ NEW ITEM</button>' : ''}</div></td><td style="width:110px"><input class="lq" type="number" step="any" min="0" value="1"></td>${
+  const free = freeItem();
+  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"><div class="lmiss hide">Not in the item list${free ? ' <button class="btn sm" type="button" data-astext="1">BILL AS TEXT (NO STOCK)</button>' : ''}</div><div class="lfree hide">Text only. Stock will not change.</div></td><td style="width:110px"><input class="lq" type="number" step="any" min="0" value="1"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party *<select id="f_party"><option value="">Choose party</option><option value="cash" ${edit && edit.t.party_id == null ? 'selected' : ''}>Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
@@ -647,9 +651,10 @@ function billForm(type, edit = null) {
     const lines = [];
     for (const tr of $('#lbody').children) {
       const name = $('.li', tr).value.trim(); if (!name) continue;
-      const it = BYLABEL.get(name.toLowerCase()); if (!it) throw new Error(`Item not found: ${name}`);
+      const it = BYLABEL.get(name.toLowerCase()), asText = !it && free && tr.dataset.free === '1';
+      if (!it && !asText) throw new Error(`Item not found: ${name}`);
       const q = Number($('.lq', tr).value); if (!(q > 0)) throw new Error(`Enter quantity for ${name}`);
-      const l = { item_id: it.id, qty: q };
+      const l = asText ? { item_id: free.id, qty: q, description: name } : { item_id: it.id, qty: q };
       if (see && $('.lp', tr).value !== '') l.price = Number($('.lp', tr).value);
       lines.push(l);
     }
@@ -670,8 +675,9 @@ function billForm(type, edit = null) {
     for (const tr of $('#lbody').children) {
       const name = $('.li', tr).value.trim(), it = BYLABEL.get(name.toLowerCase()), lq = Number($('.lq', tr).value || 0);
       if (name) { n++; if (!isLogoPart(it ? it.name : name)) q += lq; }
-      const miss = !!name && !it && document.activeElement !== $('.li', tr);
-      $('.li', tr).classList.toggle('bad', miss); $('.lmiss', tr).classList.toggle('hide', !miss);
+      const asText = !!name && !it && !!free && tr.dataset.free === '1';
+      const miss = !!name && !it && !asText && document.activeElement !== $('.li', tr);
+      $('.li', tr).classList.toggle('bad', miss); $('.lmiss', tr).classList.toggle('hide', !miss); $('.lfree', tr).classList.toggle('hide', !asText);
       if (!see) continue;
       const a = lq * Number($('.lp', tr).value || 0);
       const amt = a + (it ? a * (it.tax_rate || 0) / 100 : 0);
@@ -695,26 +701,13 @@ function billForm(type, edit = null) {
     }
     calc();
   };
-  $('#lbody').onclick = async (e) => {
+  $('#lbody').onclick = (e) => {
     if (e.target.dataset.rm) { e.target.closest('tr').remove(); calc(); }
-    if (e.target.dataset.mkitem) {
-      // make the typed name a new item right here, with the typed price, so the entry does not stop
-      const tr = e.target.closest('tr'), name = $('.li', tr).value.trim(), price = see && $('.lp', tr).value !== '' ? Number($('.lp', tr).value) : null;
-      if (!name || !confirm(`Make a new item named "${name}"${price == null ? '' : ` (${sale ? 'sale' : 'purchase'} price ${price})`}?
-
-Check the spelling first.`)) return;
-      e.target.disabled = true; $('#derr').textContent = '';
-      try {
-        await rpc('save_item', { p: { id: null, name, code: null, category_id: null, unit: null, hsn: null, tax_rate: 0, sale_price: sale ? price : null, purchase_price: sale ? null : price,
-          opening_stock: null, min_stock: 0, location: null, description: null, mrp: null, is_service: false, active: true } });
-        await loadMaster(); actives = ITEMS.filter((i) => i.active);
-      } catch (err) { $('#derr').textContent = err.message; }
-      e.target.disabled = false; calc();
-    }
+    if (e.target.dataset.astext) { const tr = e.target.closest('tr'); tr.dataset.free = '1'; calc(); $('.lq', tr).focus(); $('.lq', tr).select(); }
   };
   $('#ladd').onclick = () => $('#lbody').insertAdjacentHTML('beforeend', line());
   // Item picker: a list under the box with price and stock, like a billing screen.
-  const pick = $('#ipick'); let actives = ITEMS.filter((i) => i.active);
+  const pick = $('#ipick'), actives = ITEMS.filter((i) => i.active && i !== free);
   const showSale = can('sale_price'), showBuy = can('purchase_price');
   let pickFor = null, pickList = [], pickAt = 0;
   const closePick = () => { pick.classList.add('hide'); pickFor = null; };
@@ -797,7 +790,8 @@ Check the spelling first.`)) return;
     $('#lbody').innerHTML = edit.lines.map(() => line()).join('') + line();
     edit.lines.forEach((l, n) => {
       const tr = $('#lbody').children[n];
-      $('.li', tr).value = LABEL.get(l.item_id) || l.item; $('.lq', tr).value = l.qty;
+      if (free && l.item_id === free.id && l.description) { $('.li', tr).value = l.description; tr.dataset.free = '1'; } else $('.li', tr).value = LABEL.get(l.item_id) || l.item;
+      $('.lq', tr).value = l.qty;
       if (see) $('.lp', tr).value = l.price ?? '';
     });
     $('#f_paid').value = edit.t.paid ?? ''; $('#f_round').value = edit.t.round_off || 0; $('#f_note').value = edit.t.description || '';
