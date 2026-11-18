@@ -18,6 +18,8 @@ const PERMS = [
   ['manage_parties', 'Can add and edit parties'],
   ['entries', 'Can make entries (sale, purchase, stock)'],
   ['edit_entries', 'Can edit saved entries (only those whose amounts they can see)'],
+  ['delete_entries', 'Can delete entries (they go to the Recycle Bin, only the owner can restore)'],
+  ['adjust_stock', 'Can adjust stock by hand (ADJUST STOCK button)'],
 ];
 
 let ME = null, ITEMS = [], PARTIES = [], CATS = [], LABEL = new Map(), BYLABEL = new Map(), BUNDLES = [];
@@ -32,6 +34,9 @@ const acctTag = (a) => (a ? `<span class="tag acct" style="background:${acctColo
 const isLogoPart = (name) => /^d?cep-.*-logo$/i.test(String(name || '').trim());
 const can = (p) => ME?.perms?.[p] === true;
 const owner = () => ME?.role === 'owner';
+const canAdjust = () => owner() || can('adjust_stock');
+const canDelete = () => owner() || can('delete_entries');
+const binNote = (what) => (owner() ? (HAS_BIN ? `It will move to the Recycle Bin. ${what} You can restore it later.` : `${what} It cannot be brought back.`) : `It will move to the Recycle Bin. ${what} Only the owner can bring it back.`);
 const canEdit = (type) => HAS_EDIT && type !== 'other' && (owner() || can('edit_entries')) && sees(type);
 const sees = (type) => can(type === 'sale' || type === 'sale_return' ? 'sale_price'
   : type === 'purchase' || type === 'purchase_return' ? 'purchase_price' : 'party_balance');
@@ -462,12 +467,12 @@ async function itemDetail() {
     + (i.active ? '' : '<span class="chip offchip">INACTIVE · hidden from bills</span>');
   $('#idet').innerHTML = `<div class="panel hero near"><div class="hd"><div class="ttl"><h2>${esc(i.name)}</h2>${chips ? `<div class="chips">${chips}</div>` : ''}</div>${
     can('manage_items') ? `<button class="btn sm buy" data-item-edit="${i.id}">✏️ EDIT</button>` : ''}${
-    can('entries') && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
+    canAdjust() && !i.is_service ? `<button class="btn sm pri" data-adjust="${i.id}">ADJUST STOCK</button>` : ''}${
     can('manage_items') ? `<button class="btn sm lite" data-item-toggle="${i.id}">${i.active ? 'MARK INACTIVE' : 'MARK ACTIVE'}</button>` : ''}${HAS_ITEMDEL && !i.active ? `<button class="btn sm danger" data-item-del="${i.id}">DELETE</button>` : ''}</div>
     <div class="stats">${facts.map(([ic, k, v, c]) => `<div class="stat ${c}"><i>${ic}</i><div><span>${k}</span><b>${v}</b></div></div>`).join('')}</div></div>
     <div class="panel"><div class="hd"><h2>Stock movement</h2><span class="mute">latest ${rows.length}</span></div>${rows.length ? `<div class="tw"><table><thead><tr><th>DATE</th><th>TYPE</th><th class="r">QUANTITY</th><th class="r">PRICE / UNIT</th><th>NOTE</th><th></th></tr></thead><tbody>${
       rows.map((r) => `<tr ${r.txn ? `class="click" data-txn="${r.txn}"` : ''}><td>${fdate(r.date)}</td><td><span class="tag ${r.cls}">${r.type}</span></td><td class="r ${r.qty < 0 ? 'bad' : r.qty > 0 ? 'good' : ''}">${r.qty > 0 ? '+' : r.qty < 0 ? '−' : ''}${qty(r.raw)}</td><td class="r">${money(r.price)}</td><td>${esc(r.note || '')}</td><td>${
-        (r.adj && HAS_EDIT && (owner() || can('edit_entries')) ? `<button class="btn sm buy" data-adj-edit="${r.adj}">EDIT</button> ` : '') + (r.adj && owner() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
+        (r.adj && HAS_EDIT && canAdjust() && (owner() || can('edit_entries')) ? `<button class="btn sm buy" data-adj-edit="${r.adj}">EDIT</button> ` : '') + (r.adj && canAdjust() && canDelete() ? `<button class="btn sm danger" data-adj-del="${r.adj}">DELETE</button>` : '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No movement yet</div>'}</div>`;
   if (ITEM_BAR) ITEM_BAR();
 }
 
@@ -604,7 +609,7 @@ async function txnView(id) {
     </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
       lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
-  null, { extra: (waCan(t) ? `<button class="btn wa" type="button" data-wa="${id}">WHATSAPP</button>` : '') + (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (owner() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
+  null, { extra: (waCan(t) ? `<button class="btn wa" type="button" data-wa="${id}">WHATSAPP</button>` : '') + (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (canDelete() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
   sumFit();
 }
 function paymentForm(type, partyId, edit = null) {
@@ -824,7 +829,7 @@ VIEWS.bin = async () => {
   $('#view').innerHTML = `<div class="panel"><div class="hd"><h2>${data.length} deleted ${data.length === 1 ? 'thing' : 'things'}</h2>
     <span class="mute">Deleted entries stay here until you restore them or delete them forever. They do not count in stock or balances.</span></div>${
     data.length ? `<div class="tw"><table><thead><tr><th>DELETED ON</th><th>DELETED BY</th><th>TYPE</th><th>ENTRY DATE</th><th>PARTY / ITEM</th><th class="r">AMOUNT / QTY</th><th></th></tr></thead><tbody>${
-      data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}</td><td><span class="tag ${r.kind === 'txn' ? r.type : r.kind === 'item' ? 'purchase' : ''}">${r.kind === 'txn' ? TYPE[r.type] : r.kind === 'item' ? 'Item' : KIND[r.type]}</span></td>
+      data.map((r) => `<tr><td>${when(r.deleted_at)}</td><td>${esc(r.deleted_by_name || '')}${r.deleted_by_role === 'staff' ? ' <span class="tag sale_return">STAFF</span>' : r.deleted_by_role === 'owner' ? ' <span class="tag payment_in">OWNER</span>' : ''}</td><td><span class="tag ${r.kind === 'txn' ? r.type : r.kind === 'item' ? 'purchase' : ''}">${r.kind === 'txn' ? TYPE[r.type] : r.kind === 'item' ? 'Item' : KIND[r.type]}</span></td>
         <td>${fdate(r.date)}</td><td>${esc(r.kind === 'txn' ? (r.party || 'Cash') + (r.lines ? ` (${r.lines} items)` : '') : r.kind === 'item' ? r.item + (r.lines ? ` (used in ${r.lines} entries)` : ' (never used)') : r.item)}</td>
         <td class="r">${r.kind === 'txn' ? money(r.total) : r.kind === 'item' ? 'stock ' + qty(r.qty) : qty(r.qty)}</td>
         <td><button class="btn sm buy" data-restore="${r.kind}:${r.id}">RESTORE</button> <button class="btn sm" data-purge="${r.kind}:${r.id}">DELETE FOREVER</button></td></tr>`).join('')}</tbody></table></div>`
@@ -862,8 +867,8 @@ document.addEventListener('click', async (e) => {
   try {
     if (d.adjEdit) { e.stopPropagation(); adjustForm(SEL.item, ADJ.get(Number(d.adjEdit))); }
     else if (d.txnEdit) { const o = OPEN_TXN; if (o && o.t.id === Number(d.txnEdit)) newEntry(o.t.type, o.t.party_id, o); }
-    else if (d.adjDel) { e.stopPropagation(); if (await ask('Delete stock adjustment?', HAS_BIN ? 'It will move to the Recycle Bin. Stock will change back. You can restore it later.' : 'Stock will change back. It cannot be brought back.', 'YES, DELETE', 'danger')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
-    else if (d.txnDel) { if (await ask('Delete this entry?', HAS_BIN ? 'It will move to the Recycle Bin. Stock and balance will change back. You can restore it later.' : 'Stock and balance will change back. It cannot be brought back.', 'YES, DELETE', 'danger')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast(HAS_BIN ? 'Moved to Recycle Bin' : 'Deleted'); } }
+    else if (d.adjDel) { e.stopPropagation(); if (await ask('Delete stock adjustment?', binNote('Stock will change back.'), 'YES, DELETE', 'danger')) { await rpc('delete_adjustment', { p_id: Number(d.adjDel) }); await refresh(); toast(HAS_BIN || !owner() ? 'Moved to Recycle Bin' : 'Deleted'); } }
+    else if (d.txnDel) { if (await ask('Delete this entry?', binNote('Stock and balance will change back.'), 'YES, DELETE', 'danger')) { await rpc('delete_transaction', { p_id: Number(d.txnDel) }); $('#dlg').close(); await refresh(); toast(HAS_BIN || !owner() ? 'Moved to Recycle Bin' : 'Deleted'); } }
     else if (d.new) newEntry(d.new, d.for ? Number(d.for) : null);
     else if (d.more) moreMenu();
     else if (d.txn) await txnView(Number(d.txn));
