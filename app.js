@@ -199,7 +199,7 @@ function waText(t, p, edited, lines = []) {
     let used = 0, shown = 0, q = 0;
     for (const l of lines) if (!isLogoPart(l.item)) q += Number(l.qty || 0);
     for (const l of lines) {
-      const row = `${shown + 1}. ${l.item} - ${num(l.qty)}${l.unit ? ' ' + l.unit : ''} x ${rs(l.price)} = ${rs(l.total)}`;
+      const row = `${shown + 1}. ${l.item} - ${num(l.qty)} x ${rs(l.price)} = ${rs(l.total)}`;
       if (used + row.length > 2600) break;
       L.push(row); used += row.length + 1; shown++;
     }
@@ -298,7 +298,7 @@ function lowDialog() {
   const list = lowItems();
   dialog(`Low stock items (${list.length})`, list.length ? `<p class="mute" style="margin-top:0">Stock is at or below the alert level. Click an item to open it.</p>
     <div class="tw"><table><thead><tr><th>ITEM</th><th>CATEGORY</th><th class="r">STOCK</th><th class="r">ALERT AT</th><th class="r">SHORT BY</th></tr></thead><tbody>${
-    list.map((i) => `<tr class="click" data-goitem="${i.id}"><td>${esc(i.name)}</td><td>${esc(i.category || '')}</td><td class="r ${i.stock <= 0 ? 'bad' : 'warn'}">${qty(i.stock)} ${esc(i.unit || '')}</td><td class="r">${qty(i.min_stock)}</td><td class="r">${qty(i.min_stock - i.stock)}</td></tr>`).join('')}</tbody></table></div>`
+    list.map((i) => `<tr class="click" data-goitem="${i.id}"><td>${esc(i.name)}</td><td>${esc(i.category || '')}</td><td class="r ${i.stock <= 0 ? 'bad' : 'warn'}">${qty(i.stock)}</td><td class="r">${qty(i.min_stock)}</td><td class="r">${qty(i.min_stock - i.stock)}</td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty">No item is low on stock</div>', null,
     { extra: list.length ? '<button class="btn" type="button" id="lowcsv">EXCEL (CSV)</button>' : '' });
   if ($('#lowcsv')) $('#lowcsv').onclick = () => csv('low_stock', ['Item', 'Category', 'Stock', 'Unit', 'Alert at', 'Short by'], list.map((i) => [i.name, i.category || '', i.stock, i.unit || '', i.min_stock, i.min_stock - i.stock]));
@@ -460,7 +460,7 @@ async function itemDetail() {
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const low = !i.is_service && (i.stock < 0 || (i.active && i.min_stock > 0 && i.stock <= i.min_stock));
   const facts = [];
-  if (!i.is_service) facts.push(['📦', 'Stock quantity', `${qty(i.stock)} <small>${esc(i.unit || 'Pcs')}</small>`, low ? 'red' : 'green']);
+  if (!i.is_service) facts.push(['📦', 'Stock quantity', qty(i.stock), low ? 'red' : 'green']);
   if (can('sale_price')) facts.push(['🏷️', 'Sale price', money(i.sale_price), 'purple']);
   if (can('purchase_price')) facts.push(['🛒', 'Purchase price', money(i.purchase_price), 'blue']);
   if (can('purchase_price') && !i.is_service) facts.push(['💰', 'Stock value', money(Math.max(i.stock, 0) * (i.purchase_price || 0)), 'gold']);
@@ -500,9 +500,9 @@ function adjustForm(id, a = null) {
   const i = ITEMS.find((x) => x.id === id), opening = a?.kind === 'opening';
   dialog(`${a ? 'Edit' : 'Adjust'} stock — ${i.name}`, `<div class="grid">${opening ? '<label class="f">Type<input value="Opening stock" disabled></label>'
     : `<label class="f">Type<select id="f_kind"><option value="add" ${a?.kind === 'add' ? 'selected' : ''}>Add stock</option><option value="reduce" ${a?.kind === 'reduce' ? 'selected' : ''}>Reduce stock</option></select></label>`}
-    ${field('f_qty', `Quantity (${esc(i.unit || 'units')}) *`, a ? a.qty : '', 'type="number" step="any" min="0" required')}${field('f_date', 'Date', a ? a.date : today(), 'type="date"')}
+    ${field('f_qty', 'Quantity *', a ? a.qty : '', 'type="number" step="any" min="0" required')}${field('f_date', 'Date', a ? a.date : today(), 'type="date"')}
     ${can('purchase_price') ? field('f_at', 'At price', (a ? a.at_price : i.purchase_price) ?? '', 'type="number" step="any" min="0"') : ''}${field('f_note', 'Note', a?.description || '')}</div>
-    <p class="mute">Current stock: ${qty(i.stock)} ${esc(i.unit || '')}</p>`,
+    <p class="mute">Current stock: ${qty(i.stock)}</p>`,
   () => rpc(a ? 'update_adjustment' : 'save_adjustment', { p: { id: a?.id, item_id: id, kind: opening ? 'opening' : val('f_kind'), qty: numv('f_qty'), date: val('f_date'), at_price: numv('f_at'), description: val('f_note') } }));
 }
 
@@ -610,7 +610,7 @@ async function txnView(id) {
       ${t.edited_at ? sf('Last edited', esc(`${t.edited_by_name || ''} · ${when(t.edited_at)}`), 'sm') : t.created_by_name ? sf('Entered by', esc(t.created_by_name), 'sm') : ''}
     </div>${t.description ? `<p>${esc(t.description)}</p>` : ''}
     ${lines.length ? `<table class="stick"><thead><tr><th>#</th><th>ITEM</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr></thead><tbody>${
-      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)} ${esc(l.unit || '')}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
+      lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(l.item)}</td><td class="r">${qty(l.qty)}</td><td class="r">${money(l.price)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}</tbody></table>` : ''}`,
   null, { extra: (waCan(t) ? `<button class="btn wa" type="button" data-wa="${id}">WHATSAPP</button>` : '') + (canEdit(t.type) ? `<button class="btn buy" type="button" data-txn-edit="${id}">EDIT</button>` : '') + (canDelete() ? `<button class="btn danger" type="button" data-txn-del="${id}">DELETE</button>` : '') });
   sumFit();
 }
