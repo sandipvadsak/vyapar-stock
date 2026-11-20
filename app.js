@@ -629,7 +629,8 @@ function paymentForm(type, partyId, edit = null) {
 function billForm(type, edit = null) {
   const see = sees(type), sale = type === 'sale' || type === 'sale_return';
   const free = freeItem();
-  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"><div class="lmiss hide">Not in the item list${free ? ' <button class="btn sm" type="button" data-astext="1">BILL AS TEXT (NO STOCK)</button>' : ''}</div><div class="lfree hide">Text only. Stock will not change.</div></td><td style="width:110px"><input class="lq" type="number" step="any" min="0" value="1"></td>${
+  const canNewItem = type === 'purchase' && (owner() || can('manage_items'));
+  const line = () => `<tr><td class="no"></td><td><input class="li" autocomplete="off" placeholder="Type item name or code"><div class="lmiss hide">Not in the item list${canNewItem ? ' <button class="btn sm buy" type="button" data-mkitem="1">+ ADD NEW ITEM</button>' : ''}${free ? ' <button class="btn sm" type="button" data-astext="1">BILL AS TEXT (NO STOCK)</button>' : ''}</div><div class="lfree hide">Text only. Stock will not change.</div></td><td style="width:110px"><input class="lq" type="number" step="any" min="0" value="1"></td>${
     see ? '<td style="width:130px"><input class="lp" type="number" step="any" min="0"></td><td class="r la" style="width:120px"></td>' : ''}<td style="width:36px"><button class="btn sm" type="button" data-rm="1">✕</button></td></tr>`;
   dialog(edit ? `Edit ${TYPE[type]} · ${fdate(edit.t.date)}` : type === 'sale_return' ? 'Credit Note (Sale Return)' : type === 'purchase_return' ? 'Debit Note (Purchase Return)' : TYPE[type], `<div class="sumbar" id="sumbar"><div class="sf"><span>Date</span><b id="s_date"></b></div><div class="sf"><span>Party</span><b id="s_party"></b></div><div class="sf"><span>Items</span><b id="s_items">0</b></div><div class="sf hi"><span>Total quantity</span><b id="s_qty">0</b></div>${see ? '<div class="sf key"><span>Total</span><b id="s_total"></b></div>' : ''}</div>${type === 'sale_return' && !edit ? '<p class="mute" style="margin-top:0">Items come back into stock and the party balance goes down.</p>' : ''}<div class="grid"><label class="f">Party *<select id="f_party"><option value="">Choose party</option><option value="cash" ${edit && edit.t.party_id == null ? 'selected' : ''}>Cash (no party)</option>${
     PARTIES.filter((p) => p.active || (edit && edit.t.party_id === p.id)).map((p) => `<option value="${p.id}" ${edit && edit.t.party_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
@@ -701,13 +702,29 @@ function billForm(type, edit = null) {
     }
     calc();
   };
-  $('#lbody').onclick = (e) => {
+  $('#lbody').onclick = async (e) => {
     if (e.target.dataset.rm) { e.target.closest('tr').remove(); calc(); }
+    if (e.target.dataset.mkitem) {
+      // purchase only: make the typed name a new item right here, with the typed price as its purchase price
+      const btn = e.target, tr = btn.closest('tr'), name = $('.li', tr).value.trim(), price = see && $('.lp', tr).value !== '' ? Number($('.lp', tr).value) : null;
+      if (!name || !confirm(`Make a new item named "${name}"${price == null ? '' : ` (purchase price ${price})`}?
+
+Check the spelling first.`)) return;
+      btn.disabled = true; $('#derr').textContent = '';
+      try {
+        await rpc('save_item', { p: { id: null, name, code: null, category_id: null, unit: null, hsn: null, tax_rate: 0, sale_price: null, purchase_price: price,
+          opening_stock: null, min_stock: 0, location: null, description: null, mrp: null, is_service: false, active: true } });
+        await loadMaster(); actives = ITEMS.filter((i) => i.active && i.name !== FREE_NAME);
+        delete tr.dataset.free;
+      } catch (err) { $('#derr').textContent = err.message; }
+      btn.disabled = false; calc();
+      return;
+    }
     if (e.target.dataset.astext) { const tr = e.target.closest('tr'); tr.dataset.free = '1'; calc(); $('.lq', tr).focus(); $('.lq', tr).select(); }
   };
   $('#ladd').onclick = () => $('#lbody').insertAdjacentHTML('beforeend', line());
   // Item picker: a list under the box with price and stock, like a billing screen.
-  const pick = $('#ipick'), actives = ITEMS.filter((i) => i.active && i !== free);
+  const pick = $('#ipick'); let actives = ITEMS.filter((i) => i.active && i !== free);
   const showSale = can('sale_price'), showBuy = can('purchase_price');
   let pickFor = null, pickList = [], pickAt = 0;
   const closePick = () => { pick.classList.add('hide'); pickFor = null; };
