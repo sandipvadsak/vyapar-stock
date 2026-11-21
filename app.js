@@ -140,7 +140,7 @@ async function boot() {
 window.onhashchange = () => ME && route();
 
 const VIEWS = {};
-let SEL = { party: null, item: null }, ADJ = new Map();
+let SEL = { party: null, item: null }, ADJ = new Map(), DET_SEQ = 0;
 async function route() {
   const k = (location.hash.slice(1) || 'home').split('/')[0];
   const view = VIEWS[k] ? k : 'home';
@@ -326,8 +326,18 @@ VIEWS.parties = async () => {
 async function partyDetail() {
   const p = PARTIES.find((x) => x.id === SEL.party);
   if (!p) { $('#pdet').innerHTML = '<div class="panel"><div class="empty">Add your first party</div></div>'; return; }
-  const rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false }));
-  const pay = can('entries') && can('party_balance');
+  // same as items: show the clicked party's name at once, and drop an older answer that arrives late
+  const seq = ++DET_SEQ, shown = (el) => el && el.dataset.shown === String(p.id);
+  if (!shown($('#pdet'))) { $('#pdet').dataset.shown = ''; $('#pdet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(p.name)}</h2></div><div class="empty">Loading…</div></div>`; }
+  let rows;
+  try { rows = await all('v_transactions', (q) => q.eq('party_id', p.id).order('date', { ascending: false }).order('id', { ascending: false })); }
+  catch (err) {
+    if (seq === DET_SEQ && $('#pdet') && !shown($('#pdet'))) $('#pdet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(p.name)}</h2></div><div class="empty">Could not load. Click the party again.</div></div>`;
+    throw err;
+  }
+  if (seq !== DET_SEQ || !$('#pdet')) return;
+  $('#pdet').dataset.shown = p.id;
+  const pay =can('entries') && can('party_balance');
   // totals of each kind of entry for this party (amount shown only if this user may see it)
   const KINDS = [['sale', 'Sale bills', '🧾', 'purple'], ['sale_return', 'Credit notes', '↩️', 'gold'], ['purchase', 'Purchase bills', '🛒', 'blue'],
     ['purchase_return', 'Debit notes', '↪️', 'gold'], ['payment_in', 'Payment-In', '⬇️', 'green'], ['payment_out', 'Payment-Out', '⬆️', 'red']];
@@ -451,11 +461,19 @@ async function bulkItems(mode) {
 async function itemDetail() {
   const i = ITEMS.find((x) => x.id === SEL.item);
   if (!i) { $('#idet').innerHTML = '<div class="panel"><div class="empty">Add your first item</div></div>'; return; }
+  // show the clicked item's name at once, and drop an older answer that arrives late (it used to overwrite the newer item)
+  const seq = ++DET_SEQ, shown = (el) => el && el.dataset.shown === String(i.id);
+  if (!shown($('#idet'))) { $('#idet').dataset.shown = ''; $('#idet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(i.name)}</h2></div><div class="empty">Loading…</div></div>`; }
   const [lines, adj] = await Promise.all([
     sb.from('v_line_items').select('*').eq('item_id', i.id).order('date', { ascending: false }).order('id', { ascending: false }).limit(300),
     sb.from('v_adjustments').select('*').eq('item_id', i.id).order('date', { ascending: false }).order('id', { ascending: false }).limit(300),
   ]);
-  if (lines.error || adj.error) throw new Error((lines.error || adj.error).message);
+  if (seq !== DET_SEQ || !$('#idet')) return;
+  if (lines.error || adj.error) {
+    if (!shown($('#idet'))) $('#idet').innerHTML = `<div class="panel"><div class="hd"><h2>${esc(i.name)}</h2></div><div class="empty">Could not load. Click the item again.</div></div>`;
+    throw new Error((lines.error || adj.error).message);
+  }
+  $('#idet').dataset.shown = i.id;
   const KIND = { opening: 'Opening Stock', add: 'Add Stock', reduce: 'Reduce Stock' };
   ADJ = new Map(adj.data.map((a) => [a.id, a]));
   const rows = [
